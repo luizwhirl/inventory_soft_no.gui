@@ -94,6 +94,42 @@ O código está organizado em módulos para separar as responsabilidades:
 - `manager.py`: O cérebro da aplicação, é aqui que está o desgraçado do `GerenciadorEstoque`. Possui toda a lógica de negócio e manipulação dos dados, sem interagir diretamente com a interface.
 - `cli.py`: Contém a classe `CliApp`, responsável por toda a construção e gerenciamento da interface de linha de comando (CLI). Constrói os menus, captura os inputs do usuário e chama os métodos do `GerenciadorEstoque`.
 
+## Implementações futuras
+
+### Histórico em tempo real de movimentação
+ Uma movimentação de determinado produto ainda não pode ser especifícada para se mostrar todo o histórico. Portanto, seria interessante a adição dessa funcionaldiade
+
+ - **Visualização de histórico:** Visualizão de histórico por produto, fornecedor, localidade, etc. 
+
+
+ ### Gestão de devoluções e trocas 
+Dá procedência ao processo de devoluçãoes de clientes ou trocas de produtos de uma forma eficiente. Ao um produto ser devolvido, o estoque deve ser atualizado, e em caso de troca, o produto trocado precisa ser registrado.
+
+#### Objetos 
+- `Devolução`
+-  `Troca`
+- `ItemDevolução`
+
+### Sistema de validade e lote (?)
+> Ainda não decidi qual o foco do inventário
+
+### Relatórios Personalizados
+Apesar de já existirem os relatórios pré-definidos, seria interessante que o usuário pudesse criar seus próprios relatórios, selecionando os campos, filtros e agrupamentos que desejar
+
+#### Objetos
+
+- `Campo Relatório`: - 
+- `RelatorioPersonalizado`:
+- `FiltroRelatório`: Representa a condição do filtro (por exemplo: Categoria = "Eletrônicos) 
+
+### Gestão/Montagem de Kitting
+
+Podemos permitir que o usuário crie "kits" de produtos (tipo um kit informática que inclui teclado, mouse e monitor). Ao se vender esse kit, o estoque dos componentes individuais é automaticamente ajustado.
+> Acho que é bom refinar essa ideia. O kit pode também ocupar uma única unidade dentro do sistema.
+
+- `KitProduto`: Representa o kit de produtos, com atributos como o nomeKit, descriçao, preçoVendaKit, e uma lista de ComponenteKit (que por sua vez deve conter os produtos DO INVENTÁRIO contidos nesse kit)
+- `ComponenteKit`: Produto individual que faz parte de um kit, com atributos como produto (que no caso vai ser referência ao **objeto Produto** e **quantidadeComponente**).
+
 ## Como Executar o Projeto
 
 ### Pré-requisitos
