@@ -146,5 +146,23 @@ python main.py
 - Na primeira vez que o programa for executado, ele criará um arquivo de banco de dados chamado `estoque_database.db` no mesmo diretório.
 - O sistema detectará que o banco está vazio e o populará com dados de exemplo (fornecedores, localizações, produtos, etc.) para que as funcionalidades possam ser testadas imediatamente.
 
+  ## Problemas do sistema
+  E a parte mais divertida fica pro final, até porque eu não sou bobo nem nada. Aqui eu listo alguns dos probleminhas não consertados do programa, alguns pelos quais eu não tive tempo para consertar, ou só se tornaram um problema de fato recentemente.
+
+- Código de barras deveria aparecer quando eu visualizo detalhes dos produtos
+
+- Na criação de um kit, seria interessante para o sistema mostrar o valor da soma dos seus componentes (já que normalmente, o preço de venda deve ser maior que isso)
+
+- Ao se editar a lista dos componentes, para se evitar poluíção do terminal, uma atualização da tela onde apenas a lista dos componentes fosse mudada conforme os itens fossem adicionados
+
+- Na devolução, itens com defeito nao deveriam voltar ao estoque
+
+- Buscar produtos com código de barras não faz nada além de identificar qual é o produto
+
+- Os kits aparecem em todas as lojas que possuem pelo menos uma unidade de qualquer produto que o compõe
+
+- Basicamente, o sistema não verifica quase nenhuma entrada que o usuário dá. Logo,  durante muitas vezes é permitido inserir algo inválido. 
+> Um exemplo disso é quando você precisa de um status para a ordem de compra. Posso inserir as válidas como `"pendente"` ou `"concluída"`, mas tambem posso colocar `"whatsapp"` ou `"pneumoultramicroscopicossilicovulcanoconiótico"` porque nada disso é verificado 
+
 #### Xero!
 ![xerinhos](https://www.picgifs.com/comment-gifs/k/kisses-for-you/animaatjes-kisses-for-you-726237.gif)
