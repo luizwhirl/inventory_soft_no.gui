@@ -17,7 +17,7 @@ if REPORTLAB_DISPONIVEL:
     from reportlab.lib.pagesizes import letter
     from reportlab.lib.units import inch
 
-#  Classe da Interface de Linha de Comando
+#  Classe da Interface de Linha de Comando
 
 class CliApp:
     """Gerencia toda a interface de linha de comando."""
@@ -292,9 +292,9 @@ class CliApp:
             tipos = [
                 "Inventário Completo (Simplificado)", "Valor Total do Inventário",
                 "Produtos com Baixo Estoque", "Produtos Mais Vendidos",
-                "Histórico de Movimentação por Item", "Relatório de Vendas por Período",
-                "Relatório de Devoluções por Motivo", "Relatório de Kits Mais Vendidos",
-                "Relatório de Componentes Limitantes de Kits" 
+                "Relatório de Vendas por Período", "Relatório de Devoluções por Motivo", 
+                "Relatório de Kits Mais Vendidos", "Relatório de Componentes Limitantes de Kits",
+                "Histórico de Movimentação"
             ]
             for i, tipo in enumerate(tipos, 1):
                 print(f"{i}. {tipo}")
@@ -312,12 +312,59 @@ class CliApp:
                 elif nome_relatorio == "Relatório de Componentes Limitantes de Kits":
                     self._imprimir_cabecalho(nome_relatorio)
                     print(self.gerenciador.gerar_relatorio_componente_limitante())
+                elif nome_relatorio == "Histórico de Movimentação":
+                    self._menu_historico_movimentacoes()
+                elif nome_relatorio == "Relatório de Vendas por Período":
+                    self._gerar_relatorio_vendas_por_periodo()
                 else:
                     self._gerar_relatorio_detalhado(nome_relatorio)
                 self._esperar_enter()
             else:
                 print("Opção inválida!")
                 self._esperar_enter()
+    
+    def _menu_historico_movimentacoes(self):
+        """Submenu para seleção de tipo de relatório de histórico."""
+        while True:
+            self._imprimir_cabecalho("Histórico de Movimentação")
+            print("1. Por Produto")
+            print("2. Por Fornecedor")
+            print("3. Por Localização")
+            print("0. Voltar")
+
+            escolha = self._obter_input("\nEscolha o tipo de filtro para o histórico: ", tipo='int')
+            if escolha == 1: self._exibir_historico_por_produto()
+            elif escolha == 2: self._exibir_historico_por_fornecedor()
+            elif escolha == 3: self._exibir_historico_por_localizacao()
+            elif escolha == 0: break
+            else: print("Opção inválida!"); self._esperar_enter()
+
+    def _exibir_historico_por_produto(self):
+        """Exibe o histórico de movimentação para um produto específico."""
+        produto_id = self._selecionar_em_lista("Selecione o produto", self.gerenciador.produtos)
+        if produto_id:
+            self._imprimir_cabecalho(f"Histórico do Produto: {self.gerenciador.produtos[produto_id].nome}")
+            print(self.gerenciador.gerar_relatorio_movimentacao_item(produto_id))
+            self._esperar_enter()
+
+    def _exibir_historico_por_fornecedor(self):
+        """Exibe o histórico de movimentação para um fornecedor específico."""
+        fornecedor_id = self._selecionar_em_lista("Selecione o fornecedor", self.gerenciador.fornecedores)
+        if fornecedor_id:
+            fornecedor = self.gerenciador.fornecedores[fornecedor_id]
+            self._imprimir_cabecalho(f"Histórico do Fornecedor: {fornecedor.nome} ({fornecedor.empresa})")
+            print(self.gerenciador.gerar_relatorio_movimentacao_fornecedor(fornecedor_id))
+            self._esperar_enter()
+    
+    def _exibir_historico_por_localizacao(self):
+        """Exibe o histórico de movimentação para uma localização específica."""
+        localizacao_id = self._selecionar_em_lista("Selecione a localização", self.gerenciador.localizacoes)
+        if localizacao_id:
+            localizacao = self.gerenciador.localizacoes[localizacao_id]
+            self._imprimir_cabecalho(f"Histórico da Localização: {localizacao.nome}")
+            print(self.gerenciador.gerar_relatorio_movimentacao_localizacao(localizacao_id))
+            self._esperar_enter()
+
 
     # --- NOVO SUBMENU E MÉTODOS PARA DEVOLUÇÕES E TROCAS ---
     def _menu_devolucoes(self):
@@ -804,8 +851,8 @@ class CliApp:
                 else:
                     produtos_disponiveis_dict = {pid: self.gerenciador.produtos[pid] for pid in ids_disponiveis}
                     for produto in sorted(produtos_disponiveis_dict.values(), key=lambda p: p.nome):
-                         tipo_str = " (Kit)" if produto.tipoProduto == 'kit' else ""
-                         print(f"   {produto.id} - {produto.nome}{tipo_str} ({estoque_temporario[produto.id]})")
+                          tipo_str = " (Kit)" if produto.tipoProduto == 'kit' else ""
+                          print(f"   {produto.id} - {produto.nome}{tipo_str} ({estoque_temporario[produto.id]})")
 
                 id_selecionado = self._obter_input("\nDigite o ID do produto/kit (ou 0 para finalizar): ", tipo='int')
 
@@ -916,7 +963,7 @@ class CliApp:
             # Filtra produtos para mostrar apenas os do fornecedor selecionado.
             # Apenas produtos individuais podem ser comprados.
             produtos_fornecedor = {pid: p for pid, p in self.gerenciador.produtos.items() 
-                                   if p.fornecedor.id == fornecedor_id and p.tipoProduto == 'individual'}
+                                     if p.fornecedor.id == fornecedor_id and p.tipoProduto == 'individual'}
 
             if not produtos_fornecedor:
                 print(f"\nO fornecedor '{fornecedor.empresa}' não possui produtos individuais cadastrados.")
@@ -1009,7 +1056,7 @@ class CliApp:
         """Formata os dados de uma Ordem de Compra em um texto legível."""
         linhas = [
             "==========================================",
-            "           ORDEM DE COMPRA (RECIBO)           ",
+            "        ORDEM DE COMPRA (RECIBO)          ",
             "==========================================",
             f"Número do Pedido: {ordem.id}",
             f"Data de Emissão: {ordem.data_criacao.strftime('%d/%m/%Y %H:%M:%S')}",
@@ -1112,28 +1159,18 @@ class CliApp:
                 report_text = self.gerenciador.gerar_relatorio_baixo_estoque()
             elif tipo_relatorio == "Produtos Mais Vendidos":
                 report_text = self.gerenciador.gerar_relatorio_mais_vendidos()
-            elif tipo_relatorio == "Histórico de Movimentação por Item":
-                produto_id = self._selecionar_em_lista("Selecione o produto", self.gerenciador.produtos)
-                if produto_id: report_text = self.gerenciador.gerar_relatorio_movimentacao_item(produto_id)
-                else: return # Cancela se nenhum produto for selecionado
             elif tipo_relatorio == "Relatório de Vendas por Período":
-                str_inicio = self._obter_input("Data de Início (DD/MM/AAAA): ")
-                str_fim = self._obter_input("Data de Fim (DD/MM/AAAA): ")
-                if str_inicio and str_fim:
-                    # Converte as strings de data para objetos datetime
-                    data_inicio = datetime.strptime(str_inicio, "%d/%m/%Y")
-                    # Define a hora do fim para o final do dia para incluir todas as vendas do dia.
-                    data_fim = datetime.combine(datetime.strptime(str_fim, "%d/%m/%Y"), time.max)
-                    report_text = self.gerenciador.gerar_relatorio_vendas_periodo(data_inicio, data_fim)
-                else: return # Cancela se as datas não forem inseridas
+                self._gerar_relatorio_vendas_por_periodo()
+                return
             elif tipo_relatorio == "Relatório de Devoluções por Motivo":
-                report_text = self.gerenciador.gerar_relatorio_devolucoes_por_motivo()
-
+                self._gerar_relatorio_devolucoes()
+                return
+            
             print(report_text)
         except Exception as e:
             print(f"Erro ao gerar relatório: {e}")
 
-    #  método de UI para iniciar devolução
+    #  método de UI para iniciar devolução
     def _iniciar_devolucao_cli(self):
         """Interface para iniciar uma nova devolução."""
         self._imprimir_cabecalho("Iniciar Nova Devolução/Troca")
@@ -1271,9 +1308,24 @@ class CliApp:
         except Exception as e:
             print(f"\nErro ao processar devolução: {e}")
     
-    #  método de UI para relatório de devoluções
+    # método de UI para relatório de devoluções
     def _gerar_relatorio_devolucoes(self):
         """chama o relatório de devoluções"""
         self._imprimir_cabecalho("Relatório de Devoluções por Motivo")
         report = self.gerenciador.gerar_relatorio_devolucoes_por_motivo()
         print(report)
+
+    def _gerar_relatorio_vendas_por_periodo(self):
+        """Método para solicitar e gerar o relatório de vendas por período."""
+        try:
+            str_inicio = self._obter_input("Data de Início (DD/MM/AAAA): ")
+            str_fim = self._obter_input("Data de Fim (DD/MM/AAAA): ")
+            if str_inicio and str_fim:
+                data_inicio = datetime.strptime(str_inicio, "%d/%m/%Y")
+                data_fim = datetime.combine(datetime.strptime(str_fim, "%d/%m/%Y"), time.max)
+                self._imprimir_cabecalho("Relatório de Vendas por Período")
+                print(self.gerenciador.gerar_relatorio_vendas_periodo(data_inicio, data_fim))
+            else:
+                print("Datas inválidas. Operação cancelada.")
+        except ValueError as e:
+            print(f"Erro de formato de data: {e}. Use o formato DD/MM/AAAA.")
