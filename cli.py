@@ -144,7 +144,7 @@ class CliApp:
             print("1. Listar todos os produtos (Individuais e Kits)")
             print("2. Adicionar novo produto/kit")
             print("3. Atualizar produto/kit existente")
-            print("4. Gerenciar Composição de Kits") # NOVO
+            print("4. Gerenciar Composição de Kits") 
             print("5. Remover produto/kit")
             print("6. Buscar produto por Código de Barras")
             print("7. Registrar Entrada Manual de Estoque (Apenas produtos individuais)")
@@ -155,7 +155,7 @@ class CliApp:
             if escolha == '1': self._listar_produtos()
             elif escolha == '2': self._adicionar_produto()
             elif escolha == '3': self._atualizar_produto()
-            elif escolha == '4': self._menu_kits() # NOVO
+            elif escolha == '4': self._menu_kits() 
             elif escolha == '5': self._remover_produto()
             elif escolha == '6': self._buscar_por_barcode()
             elif escolha == '7': self._registrar_entrada_manual()
@@ -293,8 +293,8 @@ class CliApp:
                 "Inventário Completo (Simplificado)", "Valor Total do Inventário",
                 "Produtos com Baixo Estoque", "Produtos Mais Vendidos",
                 "Histórico de Movimentação por Item", "Relatório de Vendas por Período",
-                "Relatório de Devoluções por Motivo", "Relatório de Kits Mais Vendidos", # NOVO
-                "Relatório de Componentes Limitantes de Kits" # NOVO
+                "Relatório de Devoluções por Motivo", "Relatório de Kits Mais Vendidos",
+                "Relatório de Componentes Limitantes de Kits" 
             ]
             for i, tipo in enumerate(tipos, 1):
                 print(f"{i}. {tipo}")
@@ -1133,7 +1133,7 @@ class CliApp:
         except Exception as e:
             print(f"Erro ao gerar relatório: {e}")
 
-    # novo método de UI para iniciar devolução
+    #  método de UI para iniciar devolução
     def _iniciar_devolucao_cli(self):
         """Interface para iniciar uma nova devolução."""
         self._imprimir_cabecalho("Iniciar Nova Devolução/Troca")
@@ -1173,7 +1173,7 @@ class CliApp:
                 print(f"Quantidade inválida. Deve ser entre 1 e {qtd_max}.")
                 continue
             
-            motivo = self._obter_input("Motivo da devolução (ex: 'com defeito', 'tamanho errado'): ")
+            motivo = self._obter_input("Motivo da devolução: ")
             condicao = self._obter_input("Condição do produto (ex: 'novo', 'com defeito'): ")
 
             itens_devolucao_info.append({
@@ -1271,9 +1271,9 @@ class CliApp:
         except Exception as e:
             print(f"\nErro ao processar devolução: {e}")
     
-    # NOVO método de UI para relatório de devoluções
+    #  método de UI para relatório de devoluções
     def _gerar_relatorio_devolucoes(self):
-        """Chama o novo relatório de devoluções."""
+        """chama o relatório de devoluções"""
         self._imprimir_cabecalho("Relatório de Devoluções por Motivo")
         report = self.gerenciador.gerar_relatorio_devolucoes_por_motivo()
         print(report)

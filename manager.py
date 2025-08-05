@@ -327,17 +327,25 @@ class GerenciadorEstoque:
         if not (fornecedor := self.fornecedores.get(fornecedor_id)):
             raise ValueError("Fornecedor não encontrado.")
 
+        # CORRIGIDO: usa .get() para ter um valor padrão 'individual' caso 'tipoProduto' não seja passado
+        tipo_produto = kwargs.get('tipoProduto', 'individual')
+
         query = """INSERT INTO produtos (nome, descricao, categoria, codigo_barras, preco_compra, preco_venda, ponto_ressuprimento, fornecedor_id, tipo_produto)
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"""
         params = (
             kwargs['nome'], kwargs.get('descricao', ''), kwargs.get('categoria', ''),
             kwargs.get('codigo_barras', ''), kwargs['preco_compra'], kwargs['preco_venda'],
-            kwargs['ponto_ressuprimento'], fornecedor_id, kwargs['tipoProduto']
+            kwargs['ponto_ressuprimento'], fornecedor_id, tipo_produto
         )
         novo_id = self.db.execute_query(query, params)
+        
+        # Garante que o kwargs tenha o tipo correto antes de criar o objeto
+        kwargs['tipoProduto'] = tipo_produto
+        
         novo_produto = Produto(id=novo_id, fornecedor=fornecedor, **kwargs)
         self.produtos[novo_id] = novo_produto
         return novo_produto
+
 
     def atualizar_produto(self, produto_id, **kwargs):
         """Atualiza os dados de um produto."""
@@ -716,7 +724,7 @@ Data de Geração: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
                     menor_estoque_relativo = estoque_relativo
                     componente_limitante = comp.produto.nome
 
-            report += f"  > Fator Limitante: {componente_limitante}\n\n"
+            report += f"  > Fator Limitante: {componente_limitante or 'N/A'}\n\n"
         
         return report
 
