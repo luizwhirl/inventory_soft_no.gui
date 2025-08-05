@@ -94,6 +94,16 @@ O código está organizado em módulos para separar as responsabilidades:
 - `manager.py`: O cérebro da aplicação, é aqui que está o desgraçado do `GerenciadorEstoque`. Possui toda a lógica de negócio e manipulação dos dados, sem interagir diretamente com a interface.
 - `cli.py`: Contém a classe `CliApp`, responsável por toda a construção e gerenciamento da interface de linha de comando (CLI). Constrói os menus, captura os inputs do usuário e chama os métodos do `GerenciadorEstoque`.
 
+## Funcionalidades extras
+
+ ### Gestão de devoluções e trocas 
+Dá procedência ao processo de devoluçãoes de clientes ou trocas de produtos de uma forma eficiente. Ao um produto ser devolvido, o estoque deve é atualizado, e em caso de troca, o produto trocado precisa ser registrado.
+ 
+-  O usuário pode analisar a situação do produto para então decidir se deve trocar ou reembolsar o cliente
+-  No caso de um reembolso, o sistema calcula o valor total a ser devolvido.
+- Caso seja uma devolução, o produto volta ao estoque 
+> O que não deveria ser o caso. Cabe mudança 
+
 ## Implementações futuras
 
 ### Histórico em tempo real de movimentação
@@ -102,13 +112,7 @@ O código está organizado em módulos para separar as responsabilidades:
  - **Visualização de histórico:** Visualizão de histórico por produto, fornecedor, localidade, etc. 
 
 
- ### Gestão de devoluções e trocas 
-Dá procedência ao processo de devoluçãoes de clientes ou trocas de produtos de uma forma eficiente. Ao um produto ser devolvido, o estoque deve ser atualizado, e em caso de troca, o produto trocado precisa ser registrado.
 
-#### Objetos 
-- `Devolução`
--  `Troca`
-- `ItemDevolução`
 
 ### Sistema de validade e lote (?)
 > Ainda não decidi qual o foco do inventário
