@@ -112,25 +112,10 @@ Podemos permitir que o usuário crie "kits" de produtos (tipo um kit informátic
 - `KitProduto`: Representa o kit de produtos, com atributos como o nomeKit, descriçao, preçoVendaKit, e uma lista de ComponenteKit (que por sua vez deve conter os produtos DO INVENTÁRIO contidos nesse kit)
 - `ComponenteKit`: Produto individual que faz parte de um kit, com atributos como produto (que no caso vai ser referência ao **objeto Produto** e **quantidadeComponente**).
 
-## Implementações futuras
-
 ### Histórico em tempo real de movimentação
  Uma movimentação de determinado produto ainda não pode ser especifícada para se mostrar todo o histórico. Portanto, seria interessante a adição dessa funcionaldiade
 
  - **Visualização de histórico:** Visualizão de histórico por produto, fornecedor, localidade, etc. 
-
-
-
-
-
-### Relatórios Personalizados
-Apesar de já existirem os relatórios pré-definidos, seria interessante que o usuário pudesse criar seus próprios relatórios, selecionando os campos, filtros e agrupamentos que desejar
-
-#### Objetos
-
-- `Campo Relatório`: - 
-- `RelatorioPersonalizado`:
-- `FiltroRelatório`: Representa a condição do filtro (por exemplo: Categoria = "Eletrônicos) 
 
 ## Como Executar o Projeto
 

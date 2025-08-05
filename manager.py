@@ -13,7 +13,7 @@ from models import (Fornecedor, Localizacao, Produto, HistoricoMovimento,
 from database import DatabaseManager
 
 
-#  classe principal de lógica de negócios
+#  classe principal de lógica de negócios
 
 class GerenciadorEstoque:
     """cheguemos na classe principal agora"""
@@ -558,18 +558,18 @@ Valor Total do Estoque (Individuais): R$ {self.calcular_valor_total_estoque():.2
             report += f"ID: {produto.id} - {produto.nome} ({produto.categoria})"
             if produto.tipoProduto == 'kit':
                 report += " [KIT]\n"
-                report += f"  Estoque Montável: {produto.get_estoque_total()} kits\n"
-                report += f"  Custo Componentes: R$ {produto.preco_compra:,.2f} | Preço Venda: R$ {produto.preco_venda:,.2f}\n"
+                report += f"   Estoque Montável: {produto.get_estoque_total()} kits\n"
+                report += f"   Custo Componentes: R$ {produto.preco_compra:,.2f} | Preço Venda: R$ {produto.preco_venda:,.2f}\n"
                 if not produto.componentes:
-                    report += "  - Kit sem componentes definidos.\n"
+                    report += "   - Kit sem componentes definidos.\n"
                 else:
                     for comp in produto.componentes:
-                        report += f"    -> {comp.quantidade}x {comp.produto.nome}\n"
+                        report += f"     -> {comp.quantidade}x {comp.produto.nome}\n"
             else: # Individual
                 report += "\n"
-                report += f"  Estoque Total: {produto.get_estoque_total()} unidades\n"
-                report += f"  Ponto de Ressuprimento: {produto.ponto_ressuprimento}\n"
-                report += "  Estoque por Local:\n"
+                report += f"   Estoque Total: {produto.get_estoque_total()} unidades\n"
+                report += f"   Ponto de Ressuprimento: {produto.ponto_ressuprimento}\n"
+                report += "   Estoque por Local:\n"
                 estoque_locais = "\n".join([f"    - {local}: {qtd} unidades" for local, qtd in produto.estoque_por_local.items() if qtd > 0])
                 if not estoque_locais:
                     estoque_locais = "    - Sem estoque registrado"
@@ -598,7 +598,7 @@ Data de Geração: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
 
         for p in produtos_baixo_estoque:
             report += (f"ID: {p.id} - {p.nome}\n"
-                       f"    Estoque Atual: {p.get_estoque_total()} | Mínimo Definido: {p.ponto_ressuprimento}\n\n")
+                        f"     Estoque Atual: {p.get_estoque_total()} | Mínimo Definido: {p.ponto_ressuprimento}\n\n")
         return report
 
     def gerar_relatorio_mais_vendidos(self):
@@ -640,10 +640,57 @@ Data de Geração: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
         for mov in sorted(movimentos_produto, key=lambda m: m.data, reverse=True):
             sinal = '+' if mov.quantidade > 0 else ''
             report += (f"Data: {mov.data.strftime('%d/%m/%Y %H:%M')} | "
-                       f"Tipo: {mov.tipo:<30} | "
-                       f"Qtd: {sinal}{mov.quantidade:<4} | "
-                       f"Local: {mov.localizacao.nome}\n")
+                        f"Tipo: {mov.tipo:<30} | "
+                        f"Qtd: {sinal}{mov.quantidade:<4} | "
+                        f"Local: {mov.localizacao.nome}\n")
         return report
+
+    def gerar_relatorio_movimentacao_fornecedor(self, fornecedor_id: int):
+        """Gera um extrato de movimentações de todos os produtos de um fornecedor."""
+        if not (fornecedor := self.fornecedores.get(fornecedor_id)):
+            return "Erro: Fornecedor não encontrado."
+
+        produtos_do_fornecedor = [p.id for p in self.produtos.values() if p.fornecedor.id == fornecedor_id]
+        movimentos_fornecedor = [m for m in self.historico if m.produto.id in produtos_do_fornecedor]
+
+        report = f"""HISTÓRICO DE MOVIMENTAÇÃO POR FORNECEDOR: {fornecedor.empresa.upper()} (ID: {fornecedor.id})
+Data de Geração: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
+{'='*80}\n
+"""
+        if not movimentos_fornecedor:
+            return report + "Nenhuma movimentação registrada para produtos deste fornecedor."
+
+        for mov in sorted(movimentos_fornecedor, key=lambda m: m.data, reverse=True):
+            sinal = '+' if mov.quantidade > 0 else ''
+            report += (f"Data: {mov.data.strftime('%d/%m/%Y %H:%M')} | "
+                        f"Produto: {mov.produto.nome:<20} | "
+                        f"Qtd: {sinal}{mov.quantidade:<4} | "
+                        f"Tipo: {mov.tipo:<15} | "
+                        f"Local: {mov.localizacao.nome}\n")
+        return report
+
+    def gerar_relatorio_movimentacao_localizacao(self, localizacao_id: int):
+        """Gera um extrato de movimentações de todos os produtos em uma localização."""
+        if not (localizacao := self.localizacoes.get(localizacao_id)):
+            return "Erro: Localização não encontrada."
+
+        movimentos_localizacao = [m for m in self.historico if m.localizacao.id == localizacao_id]
+
+        report = f"""HISTÓRICO DE MOVIMENTAÇÃO POR LOCALIZAÇÃO: {localizacao.nome.upper()} (ID: {localizacao.id})
+Data de Geração: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
+{'='*80}\n
+"""
+        if not movimentos_localizacao:
+            return report + "Nenhuma movimentação registrada nesta localização."
+
+        for mov in sorted(movimentos_localizacao, key=lambda m: m.data, reverse=True):
+            sinal = '+' if mov.quantidade > 0 else ''
+            report += (f"Data: {mov.data.strftime('%d/%m/%Y %H:%M')} | "
+                        f"Produto: {mov.produto.nome:<20} | "
+                        f"Qtd: {sinal}{mov.quantidade:<4} | "
+                        f"Tipo: {mov.tipo:<15}\n")
+        return report
+
 
     def gerar_relatorio_vendas_periodo(self, data_inicio: datetime, data_fim: datetime):
         """Gera um relatório detalhado de vendas dentro de um período de datas."""
@@ -666,7 +713,7 @@ Período: {data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}
                 receita_total += item.subtotal
                 lucro_total += lucro_item
                 tipo_str = " (Kit)" if item.produto.tipoProduto == 'kit' else ""
-                report += f"   - Produto: {item.produto.nome:<25}{tipo_str} | Qtd: {item.quantidade}\n"
+                report += f"     - Produto: {item.produto.nome:<25}{tipo_str} | Qtd: {item.quantidade}\n"
             report += f"   Subtotal Venda: R$ {venda.valor_total:.2f}\n{'-'*20}\n"
 
         report += f"\n{'-'*30}\nRESUMO DO PERÍODO\n{'-'*30}\n"
@@ -709,7 +756,7 @@ Data de Geração: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
         for kit in kits:
             report += f"--- Kit: {kit.nome} (Máx: {kit.get_estoque_total()} montagens) ---\n"
             if not kit.componentes:
-                report += "  - Sem componentes definidos.\n\n"
+                report += "   - Sem componentes definidos.\n\n"
                 continue
 
             componente_limitante = None
@@ -718,13 +765,13 @@ Data de Geração: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
             for comp in kit.componentes:
                 estoque_total_comp = comp.produto.get_estoque_total()
                 estoque_relativo = estoque_total_comp // comp.quantidade
-                report += f"  - Componente: {comp.produto.nome} (Necessário: {comp.quantidade}, Estoque: {estoque_total_comp}) -> Permite {estoque_relativo} montagens\n"
+                report += f"   - Componente: {comp.produto.nome} (Necessário: {comp.quantidade}, Estoque: {estoque_total_comp}) -> Permite {estoque_relativo} montagens\n"
                 
                 if estoque_relativo < menor_estoque_relativo:
                     menor_estoque_relativo = estoque_relativo
                     componente_limitante = comp.produto.nome
 
-            report += f"  > Fator Limitante: {componente_limitante or 'N/A'}\n\n"
+            report += f"   > Fator Limitante: {componente_limitante or 'N/A'}\n\n"
         
         return report
 
