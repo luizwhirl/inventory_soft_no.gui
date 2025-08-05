@@ -104,6 +104,14 @@ Dá procedência ao processo de devoluçãoes de clientes ou trocas de produtos 
 - Caso seja uma devolução, o produto volta ao estoque 
 > O que não deveria ser o caso. Cabe mudança 
 
+### Gestão/Montagem de Kitting
+
+Podemos permitir que o usuário crie "kits" de produtos (tipo um kit informática que inclui teclado, mouse e monitor). Ao se vender esse kit, o estoque dos componentes individuais é automaticamente ajustado.
+> Acho que é bom refinar essa ideia. O kit pode também ocupar uma única unidade dentro do sistema.
+
+- `KitProduto`: Representa o kit de produtos, com atributos como o nomeKit, descriçao, preçoVendaKit, e uma lista de ComponenteKit (que por sua vez deve conter os produtos DO INVENTÁRIO contidos nesse kit)
+- `ComponenteKit`: Produto individual que faz parte de um kit, com atributos como produto (que no caso vai ser referência ao **objeto Produto** e **quantidadeComponente**).
+
 ## Implementações futuras
 
 ### Histórico em tempo real de movimentação
@@ -114,8 +122,6 @@ Dá procedência ao processo de devoluçãoes de clientes ou trocas de produtos 
 
 
 
-### Sistema de validade e lote (?)
-> Ainda não decidi qual o foco do inventário
 
 ### Relatórios Personalizados
 Apesar de já existirem os relatórios pré-definidos, seria interessante que o usuário pudesse criar seus próprios relatórios, selecionando os campos, filtros e agrupamentos que desejar
@@ -125,14 +131,6 @@ Apesar de já existirem os relatórios pré-definidos, seria interessante que o 
 - `Campo Relatório`: - 
 - `RelatorioPersonalizado`:
 - `FiltroRelatório`: Representa a condição do filtro (por exemplo: Categoria = "Eletrônicos) 
-
-### Gestão/Montagem de Kitting
-
-Podemos permitir que o usuário crie "kits" de produtos (tipo um kit informática que inclui teclado, mouse e monitor). Ao se vender esse kit, o estoque dos componentes individuais é automaticamente ajustado.
-> Acho que é bom refinar essa ideia. O kit pode também ocupar uma única unidade dentro do sistema.
-
-- `KitProduto`: Representa o kit de produtos, com atributos como o nomeKit, descriçao, preçoVendaKit, e uma lista de ComponenteKit (que por sua vez deve conter os produtos DO INVENTÁRIO contidos nesse kit)
-- `ComponenteKit`: Produto individual que faz parte de um kit, com atributos como produto (que no caso vai ser referência ao **objeto Produto** e **quantidadeComponente**).
 
 ## Como Executar o Projeto
 
