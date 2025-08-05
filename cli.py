@@ -8,7 +8,7 @@ import os
 from datetime import datetime, time
 
 from manager import GerenciadorEstoque
-from models import Produto, Localizacao, OrdemCompra # Para type hints e checagens de instância
+from models import Produto, Localizacao, OrdemCompra, Devolucao # Para type hints e checagens de instância
 from config import REPORTLAB_DISPONIVEL # Flag para saber se pode gerar PDF
 
 # Condicional para importar o ReportLab apenas se disponível.
@@ -17,7 +17,7 @@ if REPORTLAB_DISPONIVEL:
     from reportlab.lib.pagesizes import letter
     from reportlab.lib.units import inch
 
-# --- Classe da Interface de Linha de Comando ---
+#  Classe da Interface de Linha de Comando
 
 class CliApp:
     """Gerencia toda a interface de linha de comando."""
@@ -112,39 +112,42 @@ class CliApp:
                 print(f"\nATENÇÃO: Existem {len(alertas)} produtos com baixo estoque!")
 
             print("\n--- MENU PRINCIPAL ---")
-            print("1. Gerenciar Produtos")
+            print("1. Gerenciar Produtos e Kits")
             print("2. Gerenciar Fornecedores")
             print("3. Gerenciar Localizações e Transferências")
             print("4. Registrar Venda")
             print("5. Gerenciar Ordens de Compra")
             print("6. Gerar Relatórios")
-            print("7. Sair")
+            print("7. Gerenciar Devoluções e Trocas")
+            print("8. Sair")
 
             escolha = self._obter_input("\nEscolha uma opção: ")
 
-            if escolha == '1': self._menu_produtos()
+            if escolha == '1': self._menu_produtos_e_kits()
             elif escolha == '2': self._menu_fornecedores()
             elif escolha == '3': self._menu_localizacoes_transferencias()
             elif escolha == '4': self._registrar_venda()
             elif escolha == '5': self._menu_ordens_compra()
             elif escolha == '6': self._menu_relatorios()
-            elif escolha == '7':
+            elif escolha == '7': self._menu_devolucoes()
+            elif escolha == '8':
                 print("Saindo do sistema...")
                 break
             else:
                 print("Opção inválida!")
                 self._esperar_enter()
 
-    def _menu_produtos(self):
-        """Exibe o submenu para gerenciamento de produtos."""
+    def _menu_produtos_e_kits(self):
+        """Exibe o submenu para gerenciamento de produtos e kits."""
         while True:
-            self._imprimir_cabecalho("Gerenciar Produtos")
-            print("1. Listar todos os produtos")
-            print("2. Adicionar novo produto")
-            print("3. Atualizar produto existente")
-            print("4. Remover produto")
-            print("5. Buscar produto por Código de Barras")
-            print("6. Registrar Entrada Manual de Estoque")
+            self._imprimir_cabecalho("Gerenciar Produtos e Kits")
+            print("1. Listar todos os produtos (Individuais e Kits)")
+            print("2. Adicionar novo produto/kit")
+            print("3. Atualizar produto/kit existente")
+            print("4. Gerenciar Composição de Kits") 
+            print("5. Remover produto/kit")
+            print("6. Buscar produto por Código de Barras")
+            print("7. Registrar Entrada Manual de Estoque (Apenas produtos individuais)")
             print("0. Voltar ao Menu Principal")
 
             escolha = self._obter_input("\nEscolha uma opção: ")
@@ -152,12 +155,73 @@ class CliApp:
             if escolha == '1': self._listar_produtos()
             elif escolha == '2': self._adicionar_produto()
             elif escolha == '3': self._atualizar_produto()
-            elif escolha == '4': self._remover_produto()
-            elif escolha == '5': self._buscar_por_barcode()
-            elif escolha == '6': self._registrar_entrada_manual()
+            elif escolha == '4': self._menu_kits() 
+            elif escolha == '5': self._remover_produto()
+            elif escolha == '6': self._buscar_por_barcode()
+            elif escolha == '7': self._registrar_entrada_manual()
             elif escolha == '0': break
             else: print("Opção inválida!")
             self._esperar_enter()
+            
+    def _menu_kits(self):
+        """Submenu para gerenciar a composição dos kits."""
+        self._imprimir_cabecalho("Gerenciar Composição de Kits")
+
+        # Filtra para mostrar apenas produtos que são kits
+        kits_disponiveis = {pid: p for pid, p in self.gerenciador.produtos.items() if p.tipoProduto == 'kit'}
+        if not kits_disponiveis:
+            print("Nenhum kit cadastrado. Crie um kit no menu 'Adicionar novo produto/kit'.")
+            return
+
+        kit_id = self._selecionar_em_lista("Selecione o Kit para gerenciar", kits_disponiveis)
+        if kit_id is None:
+            return
+
+        kit_selecionado = self.gerenciador.produtos[kit_id]
+        componentes_atuais = kit_selecionado.componentes
+
+        self._imprimir_cabecalho(f"Editando Componentes do Kit: {kit_selecionado.nome}")
+
+        if componentes_atuais:
+            print("--- Componentes Atuais ---")
+            for comp in componentes_atuais:
+                print(f" - {comp.quantidade}x {comp.produto.nome} (ID: {comp.produto.id})")
+        else:
+            print("Este kit ainda não possui componentes.")
+
+        print("\n--- Adicionar/Definir Novos Componentes ---")
+        print("(A lista de componentes atual será substituída pela nova)")
+
+        novos_componentes = []
+        # Filtra para mostrar apenas produtos individuais como possíveis componentes
+        produtos_individuais = {pid: p for pid, p in self.gerenciador.produtos.items() if p.tipoProduto == 'individual'}
+
+        while True:
+            comp_id = self._selecionar_em_lista(
+                "Selecione um produto para adicionar como componente",
+                produtos_individuais,
+                prompt_personalizado="\nDigite o ID do componente (ou 0 para finalizar): "
+            )
+            if comp_id is None:
+                break
+
+            quantidade = self._obter_input(f"Quantidade de '{produtos_individuais[comp_id].nome}' por kit: ", tipo='int')
+            if quantidade > 0:
+                novos_componentes.append({'produto_id': comp_id, 'quantidade': quantidade})
+                print(f"Adicionado: {quantidade}x {produtos_individuais[comp_id].nome}")
+            else:
+                print("Quantidade deve ser maior que zero.")
+
+        if not novos_componentes:
+            print("\nNenhum novo componente adicionado. A composição não foi alterada.")
+            return
+
+        try:
+            self.gerenciador.definir_componentes_kit(kit_id, novos_componentes)
+            print("\nComponentes do kit atualizados com sucesso!")
+        except Exception as e:
+            print(f"\nErro ao atualizar componentes: {e}")
+
 
     def _menu_fornecedores(self):
         """Exibe o submenu para gerenciamento de fornecedores."""
@@ -187,7 +251,7 @@ class CliApp:
             print("2. Adicionar nova localização")
             print("3. Atualizar localização existente")
             print("4. Remover localização")
-            print("5. Realizar Transferência de Estoque")
+            print("5. Realizar Transferência de Estoque (Produtos Individuais)")
             print("0. Voltar ao Menu Principal")
 
             escolha = self._obter_input("\nEscolha uma opção: ")
@@ -228,7 +292,9 @@ class CliApp:
             tipos = [
                 "Inventário Completo (Simplificado)", "Valor Total do Inventário",
                 "Produtos com Baixo Estoque", "Produtos Mais Vendidos",
-                "Histórico de Movimentação por Item", "Relatório de Vendas por Período"
+                "Histórico de Movimentação por Item", "Relatório de Vendas por Período",
+                "Relatório de Devoluções por Motivo", "Relatório de Kits Mais Vendidos",
+                "Relatório de Componentes Limitantes de Kits" 
             ]
             for i, tipo in enumerate(tipos, 1):
                 print(f"{i}. {tipo}")
@@ -237,18 +303,47 @@ class CliApp:
             escolha = self._obter_input("\nEscolha o tipo de relatório: ", tipo='int')
             if escolha == 0: break
             if 1 <= escolha <= len(tipos):
-                self._gerar_relatorio_detalhado(tipos[escolha - 1])
+                nome_relatorio = tipos[escolha - 1]
+                if nome_relatorio == "Relatório de Devoluções por Motivo":
+                    self._gerar_relatorio_devolucoes()
+                elif nome_relatorio == "Relatório de Kits Mais Vendidos":
+                    self._imprimir_cabecalho(nome_relatorio)
+                    print(self.gerenciador.gerar_relatorio_kits_mais_vendidos())
+                elif nome_relatorio == "Relatório de Componentes Limitantes de Kits":
+                    self._imprimir_cabecalho(nome_relatorio)
+                    print(self.gerenciador.gerar_relatorio_componente_limitante())
+                else:
+                    self._gerar_relatorio_detalhado(nome_relatorio)
                 self._esperar_enter()
             else:
                 print("Opção inválida!")
                 self._esperar_enter()
+
+    # --- NOVO SUBMENU E MÉTODOS PARA DEVOLUÇÕES E TROCAS ---
+    def _menu_devolucoes(self):
+        """Exibe o submenu para gerenciamento de devoluções e trocas."""
+        while True:
+            self._imprimir_cabecalho("Gerenciar Devoluções e Trocas")
+            print("1. Iniciar nova Devolução/Troca")
+            print("2. Listar Devoluções (em aberto e concluídas)")
+            print("3. Processar Devolução (Analisar e Finalizar)")
+            print("0. Voltar ao Menu Principal")
+
+            escolha = self._obter_input("\nEscolha uma opção: ")
+
+            if escolha == '1': self._iniciar_devolucao_cli()
+            elif escolha == '2': self._listar_devolucoes()
+            elif escolha == '3': self._processar_devolucao_cli()
+            elif escolha == '0': break
+            else: print("Opção inválida!")
+            self._esperar_enter()
 
     # --- Implementação das Ações ---
 
     # Produtos
     def _listar_produtos(self):
         """Exibe uma lista detalhada de todos os produtos cadastrados."""
-        self._imprimir_cabecalho("Lista de Produtos")
+        self._imprimir_cabecalho("Lista de Produtos (Individuais e Kits)")
         produtos = self.gerenciador.produtos
         if not produtos:
             print("Nenhum produto cadastrado.")
@@ -259,26 +354,39 @@ class CliApp:
             print(separador)
             print(f"ID: {p.id}")
             print(f"Nome: {p.nome}")
+            
+            tipo_str = "Kit" if p.tipoProduto == 'kit' else "Individual"
+            print(f"Tipo: {tipo_str}")
+            
             print(f"Categoria: {p.categoria}")
             print(f"Fornecedor: {p.fornecedor.nome} ({p.fornecedor.empresa})")
             print(f"Preço Venda: R$ {p.preco_venda:,.2f}")
-            print(f"Estoque Total: {p.get_estoque_total()} unidades")
-
-            print("Estoque por Local:")
-            # Usamos .items() para pegar tanto a chave (local) quanto o valor (quantidade)
-            estoque_local_items = p.estoque_por_local.items()
-            # Verificamos se há algum local com estoque maior que zero
-            if any(qtd > 0 for _, qtd in estoque_local_items):
-                for loc, qtd in estoque_local_items:
-                    if qtd > 0:
-                        print(f"   - {loc}: {qtd} unidades")
+            
+            estoque_calculado = p.get_estoque_total()
+            if p.tipoProduto == 'kit':
+                print(f"Estoque Montável: {estoque_calculado} unidades (calculado)")
+                if componentes := p.componentes:
+                    print("Componentes do Kit:")
+                    for comp in componentes:
+                        print(f"  - {comp.quantidade}x {comp.produto.nome} (Estoque: {comp.produto.get_estoque_total()})")
+                else:
+                    print("  - Kit sem componentes definidos.")
             else:
-                print("   - Nenhum estoque registrado.")
+                print(f"Estoque Total: {estoque_calculado} unidades")
+                print("Estoque por Local:")
+                estoque_local_items = p.estoque_por_local.items()
+                if any(qtd > 0 for _, qtd in estoque_local_items):
+                    for loc, qtd in estoque_local_items:
+                        if qtd > 0:
+                            print(f"   - {loc}: {qtd} unidades")
+                else:
+                    print("   - Nenhum estoque registrado.")
         print(separador)
 
+
     def _adicionar_produto(self):
-        """Guia o usuário no processo de adicionar um novo produto."""
-        self._imprimir_cabecalho("Adicionar Novo Produto")
+        """Guia o usuário no processo de adicionar um novo produto ou kit."""
+        self._imprimir_cabecalho("Adicionar Novo Produto/Kit")
         try:
             nome = self._obter_input("Nome (deixe em branco para cancelar): ", obrigatorio=False)
             if not nome:
@@ -295,37 +403,60 @@ class CliApp:
                 print("\nAdição cancelada.")
                 return
 
+            # Pergunta o tipo de produto
+            tipo_produto = ''
+            while tipo_produto not in ['1', '2']:
+                tipo_produto = self._obter_input("Este é um (1) Produto Individual ou (2) um Kit? ", obrigatorio=True)
+            tipo_produto_str = "kit" if tipo_produto == '2' else "individual"
+            
             codigo_barras = self._obter_input("Código de Barras: ", obrigatorio=False)
-            preco_compra = self._obter_input("Preço de Compra: ", tipo='float')
+            
+            if tipo_produto_str == 'kit':
+                # Preço de compra e ponto de ressuprimento de kits são derivados dos componentes
+                preco_compra = 0 
+                ponto_ressuprimento = 0
+                print("\nO preço de compra do kit será a soma dos componentes.")
+                print("O ponto de ressuprimento não se aplica diretamente a kits.")
+            else:
+                preco_compra = self._obter_input("Preço de Compra: ", tipo='float')
+                ponto_ressuprimento = self._obter_input("Ponto de Ressuprimento (estoque mínimo): ", tipo='int')
+
             preco_venda = self._obter_input("Preço de Venda: ", tipo='float')
-            ponto_ressuprimento = self._obter_input("Ponto de Ressuprimento (estoque mínimo): ", tipo='int')
+
 
             novo_produto = self.gerenciador.adicionar_produto(
                 fornecedor_id=fornecedor_id, nome=nome, descricao=descricao, categoria=categoria,
                 codigo_barras=codigo_barras or "N/A", preco_compra=preco_compra, preco_venda=preco_venda,
-                ponto_ressuprimento=ponto_ressuprimento
+                ponto_ressuprimento=ponto_ressuprimento, tipoProduto=tipo_produto_str
             )
-            print(f"\nProduto '{novo_produto.nome}' adicionado com sucesso!")
+            print(f"\n{tipo_produto_str.capitalize()} '{novo_produto.nome}' adicionado com sucesso!")
 
-            # Pergunta se deseja adicionar um estoque inicial para o novo produto.
-            qtd_inicial = self._obter_input("Deseja adicionar uma quantidade inicial? (Digite a qtd ou 0 para pular): ", tipo='int')
-            if qtd_inicial and qtd_inicial > 0:
-                local_id = self._selecionar_em_lista(
-                    "Selecione a Localização para a entrada inicial",
-                    self.gerenciador.localizacoes,
-                    contexto_produto=novo_produto
-                )
-                if local_id:
-                    self.gerenciador.movimentar_estoque(novo_produto.id, local_id, qtd_inicial, "Carga Inicial")
-                    print(f"{qtd_inicial} unidades adicionadas ao estoque.")
+            # Lógica para adicionar estoque ou componentes
+            if tipo_produto_str == 'individual':
+                qtd_inicial = self._obter_input("Deseja adicionar uma quantidade inicial? (Digite a qtd ou 0 para pular): ", tipo='int')
+                if qtd_inicial and qtd_inicial > 0:
+                    local_id = self._selecionar_em_lista(
+                        "Selecione a Localização para a entrada inicial",
+                        self.gerenciador.localizacoes,
+                        contexto_produto=novo_produto
+                    )
+                    if local_id:
+                        self.gerenciador.movimentar_estoque(novo_produto.id, local_id, qtd_inicial, "Carga Inicial")
+                        print(f"{qtd_inicial} unidades adicionadas ao estoque.")
+            else: # É um kit
+                print("\nAgora, vamos definir os componentes deste kit.")
+                self._esperar_enter()
+                # Chamar a função que edita os componentes, passando o novo kit.
+                self._menu_kits()
+
 
         except Exception as e:
             print(f"\nErro ao adicionar produto: {e}")
 
     def _atualizar_produto(self):
         """Guia o usuário na atualização de um produto existente."""
-        self._imprimir_cabecalho("Atualizar Produto")
-        produto_id = self._selecionar_em_lista("Selecione o produto para atualizar", self.gerenciador.produtos)
+        self._imprimir_cabecalho("Atualizar Produto/Kit")
+        produto_id = self._selecionar_em_lista("Selecione o produto/kit para atualizar", self.gerenciador.produtos)
         if produto_id is None: return
 
         try:
@@ -339,38 +470,60 @@ class CliApp:
             fornecedor_id = self._selecionar_em_lista(
                 "Selecione o novo fornecedor (ou 0 para manter)",
                 self.gerenciador.fornecedores,
-                prompt_personalizado="Digite o ID do item desejado: " # tava passando sufoco sem esse prompt aqui
-            ) or p.fornecedor.id 
+                prompt_personalizado="Digite o ID do item desejado: "
+            ) or p.fornecedor.id
 
             codigo_barras = self._obter_input(f"Cód. Barras [{p.codigo_barras}]: ", obrigatorio=False) or p.codigo_barras
-            preco_compra = self._obter_input(f"Preço Compra [R${p.preco_compra:.2f}]: ", obrigatorio=False, tipo='float') or p.preco_compra
-            preco_venda = self._obter_input(f"Preço Venda [R${p.preco_venda:.2f}]: ", obrigatorio=False, tipo='float') or p.preco_venda
-            ponto_ressuprimento = self._obter_input(f"Ponto Ressupr. [{p.ponto_ressuprimento}]: ", obrigatorio=False, tipo='int') or p.ponto_ressuprimento
+            
+            # Preços e ressuprimento
+            if p.tipoProduto == 'individual':
+                 preco_compra = self._obter_input(f"Preço Compra [R${p.preco_compra:.2f}]: ", obrigatorio=False, tipo='float') or p.preco_compra
+                 ponto_ressuprimento = self._obter_input(f"Ponto Ressupr. [{p.ponto_ressuprimento}]: ", obrigatorio=False, tipo='int') or p.ponto_ressuprimento
+            else:
+                # Mantém os valores zerados para kits, pois são calculados
+                preco_compra = p.preco_compra 
+                ponto_ressuprimento = p.ponto_ressuprimento
+                print(f"Preço de compra de kit é calculado: R$ {p.preco_compra:,.2f}")
 
+            preco_venda = self._obter_input(f"Preço Venda [R${p.preco_venda:.2f}]: ", obrigatorio=False, tipo='float') or p.preco_venda
+            
             dados = {
                 'nome': nome, 'descricao': descricao, 'categoria': categoria, 'codigo_barras': codigo_barras,
                 'preco_compra': preco_compra, 'preco_venda': preco_venda, 'ponto_ressuprimento': ponto_ressuprimento,
                 'fornecedor_id': fornecedor_id
             }
             self.gerenciador.atualizar_produto(produto_id, **dados)
-            print("\nProduto atualizado com sucesso!")
+            print("\nProduto/Kit atualizado com sucesso!")
+            
+            if p.tipoProduto == 'kit':
+                print("\nPara alterar os componentes, use a opção 'Gerenciar Composição de Kits'.")
 
         except Exception as e:
             print(f"\nErro ao atualizar produto: {e}")
 
     def _remover_produto(self):
         """Guia o usuário na remoção de um produto."""
-        self._imprimir_cabecalho("Remover Produto")
-        produto_id = self._selecionar_em_lista("Selecione o produto para remover", self.gerenciador.produtos)
+        self._imprimir_cabecalho("Remover Produto/Kit")
+        produto_id = self._selecionar_em_lista("Selecione o produto/kit para remover", self.gerenciador.produtos)
         if produto_id is None: return
 
-        produto_nome = self.gerenciador.produtos[produto_id].nome
-        confirmacao = self._obter_input(f"Tem certeza que deseja remover '{produto_nome}'? Esta ação é irreversível. (s/n): ")
+        produto = self.gerenciador.produtos[produto_id]
+        
+        # Alerta adicional se o produto for componente de algum kit
+        kits_afetados = self.gerenciador.verificar_se_produto_e_componente(produto_id)
+        if kits_afetados:
+            print("\n!!! ATENÇÃO !!!")
+            print(f"Este produto é um componente dos seguintes kits:")
+            for kit_nome in kits_afetados:
+                print(f" - {kit_nome}")
+            print("Remover este produto irá removê-lo também da composição desses kits.")
+            
+        confirmacao = self._obter_input(f"Tem certeza que deseja remover '{produto.nome}'? Esta ação é irreversível. (s/n): ")
         if confirmacao and confirmacao.lower() == 's':
             if self.gerenciador.remover_produto(produto_id):
-                print("Produto removido com sucesso.")
+                print("Produto/Kit removido com sucesso.")
             else:
-                print("Erro: Produto não encontrado.")
+                print("Erro: Produto/Kit não encontrado.")
         else:
             print("Remoção cancelada.")
 
@@ -381,14 +534,22 @@ class CliApp:
         produto = self.gerenciador.buscar_produto_por_codigo_barras(barcode)
         if produto:
             print("\n--- Produto Encontrado ---")
-            print(f"ID: {produto.id}, Nome: {produto.nome}, Estoque Total: {produto.get_estoque_total()}")
+            estoque_str = f"(Kit) Estoque Montável: {produto.get_estoque_total()}" if produto.tipoProduto == 'kit' else f"Estoque Total: {produto.get_estoque_total()}"
+            print(f"ID: {produto.id}, Nome: {produto.nome}, {estoque_str}")
         else:
             print("\nProduto não encontrado com este código de barras.")
 
     def _registrar_entrada_manual(self):
         """Permite registrar uma entrada de estoque manual para um produto."""
         self._imprimir_cabecalho("Registrar Entrada Manual de Estoque")
-        produto_id = self._selecionar_em_lista("Selecione o produto", self.gerenciador.produtos)
+        
+        # Filtra para permitir entrada apenas em produtos individuais
+        produtos_individuais = {pid: p for pid, p in self.gerenciador.produtos.items() if p.tipoProduto == 'individual'}
+        if not produtos_individuais:
+            print("Nenhum produto individual cadastrado para adicionar estoque.")
+            return
+
+        produto_id = self._selecionar_em_lista("Selecione o produto (apenas individuais)", produtos_individuais)
         if produto_id is None: return
 
         produto_selecionado = self.gerenciador.produtos[produto_id]
@@ -478,11 +639,11 @@ class CliApp:
         if fornecedor_id is None: return
 
         f = self.gerenciador.fornecedores[fornecedor_id]
-        print("\nAVISO: Remover um fornecedor também removerá TODOS os produtos associados a ele.")
+        print("\nAVISO: Remover um fornecedor também removerá TODOS os produtos e kits associados a ele.")
         confirmacao = self._obter_input(f"Tem certeza que deseja remover '{f.nome} ({f.empresa})'? (s/n): ")
         if confirmacao and confirmacao.lower() == 's':
             if self.gerenciador.remover_fornecedor(fornecedor_id):
-                print("Fornecedor e seus produtos foram removidos.")
+                print("Fornecedor e seus produtos/kits foram removidos.")
             else:
                 print("Erro: Fornecedor não encontrado.")
         else:
@@ -555,9 +716,15 @@ class CliApp:
 
     def _realizar_transferencia(self):
         """Guia o usuário no processo de transferir estoque entre localizações."""
-        self._imprimir_cabecalho("Transferir Estoque")
+        self._imprimir_cabecalho("Transferir Estoque (Produtos Individuais)")
         try:
-            produto_id = self._selecionar_em_lista("Selecione o produto a ser transferido", self.gerenciador.produtos)
+            # Filtra para permitir transferência apenas de produtos individuais
+            produtos_individuais = {pid: p for pid, p in self.gerenciador.produtos.items() if p.tipoProduto == 'individual'}
+            if not produtos_individuais:
+                print("Nenhum produto individual disponível para transferência.")
+                return
+
+            produto_id = self._selecionar_em_lista("Selecione o produto a ser transferido", produtos_individuais)
             if produto_id is None: return
 
             produto_selecionado = self.gerenciador.produtos[produto_id]
@@ -590,7 +757,7 @@ class CliApp:
         """Gerencia a interface para registrar uma nova venda, item por item."""
         self._imprimir_cabecalho("Registrar Nova Venda")
         try:
-            local_id = self._selecionar_em_lista("Selecione o local de saída do estoque", self.gerenciador.localizacoes)
+            local_id = self._selecionar_em_lista("Selecione o local da venda", self.gerenciador.localizacoes)
             if local_id is None:
                 print("\nOperação cancelada.")
                 self._esperar_enter()
@@ -600,11 +767,14 @@ class CliApp:
             local_selecionado = self.gerenciador.localizacoes[local_id]
 
             # Dicionário para gerenciar o estado do estoque *durante* esta venda.
-            # Isso evita alterações no estoque real até a confirmação final.
-            estoque_temporario = {
-                p_id: p.estoque_por_local.get(local_selecionado.nome, 0)
-                for p_id, p in self.gerenciador.produtos.items()
-            }
+            estoque_temporario = {}
+            for p in self.gerenciador.produtos.values():
+                 # Para kits, o estoque temporário é o estoque calculável. Para individuais, o estoque do local.
+                 if p.tipoProduto == 'kit':
+                     estoque_temporario[p.id] = p.get_estoque_total()
+                 else:
+                     estoque_temporario[p.id] = p.estoque_por_local.get(local_selecionado.nome, 0)
+
             itens_venda = []
 
             while True:
@@ -625,22 +795,22 @@ class CliApp:
                 else:
                     print("\nCarrinho vazio.")
 
-                print("\n--- Adicionar Produto ---")
-                print("Produtos disponíveis neste local):")
+                print("\n--- Adicionar Produto/Kit ---")
+                print("Itens disponíveis para venda:")
                 ids_disponiveis = [pid for pid, qtd in estoque_temporario.items() if qtd > 0]
 
                 if not ids_disponiveis:
-                    print("Nenhum produto com estoque restante neste local.")
+                    print("Nenhum produto com estoque restante para esta venda.")
                 else:
-                    # Ordena por nome para melhor visualização
-                    for produto_id in sorted(ids_disponiveis, key=lambda pid: self.gerenciador.produtos[pid].nome):
-                        produto = self.gerenciador.produtos[produto_id]
-                        print(f"   {produto.id} - {produto.nome} ({estoque_temporario[produto_id]})")
+                    produtos_disponiveis_dict = {pid: self.gerenciador.produtos[pid] for pid in ids_disponiveis}
+                    for produto in sorted(produtos_disponiveis_dict.values(), key=lambda p: p.nome):
+                         tipo_str = " (Kit)" if produto.tipoProduto == 'kit' else ""
+                         print(f"   {produto.id} - {produto.nome}{tipo_str} ({estoque_temporario[produto.id]})")
 
-                id_selecionado = self._obter_input("\nDigite o ID do produto (ou 0 para finalizar e confirmar): ", tipo='int')
+                id_selecionado = self._obter_input("\nDigite o ID do produto/kit (ou 0 para finalizar): ", tipo='int')
 
                 if id_selecionado == 0:
-                    break  # Sai do loop para finalizar a venda
+                    break
 
                 if id_selecionado not in self.gerenciador.produtos:
                     print("ID inválido. Tente novamente.")
@@ -651,7 +821,7 @@ class CliApp:
                 estoque_disponivel_item = estoque_temporario.get(id_selecionado, 0)
 
                 if estoque_disponivel_item <= 0:
-                    print("Este produto não tem mais estoque disponível para esta venda.")
+                    print("Este item não tem mais estoque disponível para esta venda.")
                     self._esperar_enter()
                     continue
 
@@ -664,12 +834,30 @@ class CliApp:
                     if qtd_desejada > estoque_disponivel_item:
                         print(f"Estoque insuficiente. Apenas {estoque_disponivel_item} unidades disponíveis.")
                     else:
-                        break  # Quantidade válida
+                        break
 
                 # Subtrai do estoque temporário
+                # Se for kit, precisa recalcular o estoque de outros kits que usam os mesmos componentes
                 estoque_temporario[id_selecionado] -= qtd_desejada
+                if produto.tipoProduto == 'kit':
+                    # Pega todos os componentes que foram "usados"
+                    componentes_usados = produto.componentes
+                    for _ in range(qtd_desejada): # Para cada kit vendido
+                        # Atualiza o estoque temporário dos componentes
+                        for comp in componentes_usados:
+                            estoque_temporario[comp.produto.id] -= comp.quantidade
+                    
+                    # Recalcula o estoque de todos os kits
+                    for p_id, p_obj in self.gerenciador.produtos.items():
+                        if p_obj.tipoProduto == 'kit':
+                            try:
+                                # Calcula o novo estoque possível baseado no estoque temporário dos componentes
+                                estoque_recalculado = min((estoque_temporario.get(c.produto.id, 0) // c.quantidade) for c in p_obj.componentes)
+                                estoque_temporario[p_id] = estoque_recalculado
+                            except (ValueError, ZeroDivisionError):
+                                estoque_temporario[p_id] = 0
 
-                # Adiciona ao carrinho (ou atualiza a quantidade se já existir)
+                # Adiciona ao carrinho
                 item_existente = next((item for item in itens_venda if item['produto_id'] == id_selecionado), None)
                 if item_existente:
                     item_existente['quantidade'] += qtd_desejada
@@ -687,13 +875,11 @@ class CliApp:
             # Confirmação final
             confirmacao = self._obter_input("\nConfirmar e registrar esta venda? (s/n): ")
             if confirmacao and confirmacao.lower() == 's':
-                # Ação real: persistir a venda no banco
                 _, produtos_alertados = self.gerenciador.registrar_venda(itens_venda, nome_cliente, local_id)
                 print("\nVenda registrada com sucesso!")
                 if produtos_alertados:
                     print("\nAlerta de baixo estoque para:", ", ".join([p.nome for p in produtos_alertados]))
             else:
-                # Ação abortada: o estoque temporário é simplesmente descartado.
                 print("\nVenda cancelada. O estoque não foi alterado.")
 
         except Exception as e:
@@ -728,7 +914,13 @@ class CliApp:
 
             fornecedor = self.gerenciador.fornecedores[fornecedor_id]
             # Filtra produtos para mostrar apenas os do fornecedor selecionado.
-            produtos_fornecedor = {pid: p for pid, p in self.gerenciador.produtos.items() if p.fornecedor.id == fornecedor_id}
+            # Apenas produtos individuais podem ser comprados.
+            produtos_fornecedor = {pid: p for pid, p in self.gerenciador.produtos.items() 
+                                   if p.fornecedor.id == fornecedor_id and p.tipoProduto == 'individual'}
+
+            if not produtos_fornecedor:
+                print(f"\nO fornecedor '{fornecedor.empresa}' não possui produtos individuais cadastrados.")
+                return
 
             itens_oc = []
             while True:
@@ -817,7 +1009,7 @@ class CliApp:
         """Formata os dados de uma Ordem de Compra em um texto legível."""
         linhas = [
             "==========================================",
-            "          ORDEM DE COMPRA (RECIBO)          ",
+            "           ORDEM DE COMPRA (RECIBO)           ",
             "==========================================",
             f"Número do Pedido: {ordem.id}",
             f"Data de Emissão: {ordem.data_criacao.strftime('%d/%m/%Y %H:%M:%S')}",
@@ -827,7 +1019,7 @@ class CliApp:
             f"Nome do Contato: {ordem.fornecedor.nome}",
             f"Telefone: {ordem.fornecedor.telefone}",
             f"Email: {ordem.fornecedor.email}",
-            f"Morada: {ordem.fornecedor.morada}",
+            f"Endereço: {ordem.fornecedor.morada}",
             "\n--- ITENS DO PEDIDO ---"
         ]
 
@@ -934,7 +1126,154 @@ class CliApp:
                     data_fim = datetime.combine(datetime.strptime(str_fim, "%d/%m/%Y"), time.max)
                     report_text = self.gerenciador.gerar_relatorio_vendas_periodo(data_inicio, data_fim)
                 else: return # Cancela se as datas não forem inseridas
+            elif tipo_relatorio == "Relatório de Devoluções por Motivo":
+                report_text = self.gerenciador.gerar_relatorio_devolucoes_por_motivo()
 
             print(report_text)
         except Exception as e:
             print(f"Erro ao gerar relatório: {e}")
+
+    #  método de UI para iniciar devolução
+    def _iniciar_devolucao_cli(self):
+        """Interface para iniciar uma nova devolução."""
+        self._imprimir_cabecalho("Iniciar Nova Devolução/Troca")
+        
+        # Seleciona a venda original
+        vendas_validas = {v.id: v for v in self.gerenciador.vendas.values()}
+        if not vendas_validas:
+            print("Não há vendas registradas para iniciar uma devolução.")
+            self._esperar_enter()
+            return
+            
+        venda_id = self._selecionar_em_lista("Selecione a Venda Original", vendas_validas)
+        if venda_id is None:
+            print("\nOperação cancelada.")
+            return
+
+        venda_original = self.gerenciador.vendas[venda_id]
+        print(f"\nDetalhes da Venda #{venda_id} - Cliente: {venda_original.cliente}:")
+        print("Itens na venda original:")
+        for item in venda_original.itens:
+            print(f"   - ID: {item.produto.id}, Produto: {item.produto.nome}, Qtd: {item.quantidade}, Preço Un: R$ {item.preco_venda_unitario:,.2f}")
+
+        itens_devolucao_info = []
+        while True:
+            print("\nAdicionar item para devolução (ou 0 para finalizar):")
+            produto_id = self._obter_input("ID do Produto: ", tipo='int')
+            if produto_id == 0: break
+            
+            item_vendido = next((item for item in venda_original.itens if item.produto.id == produto_id), None)
+            if not item_vendido:
+                print("Produto não encontrado nesta venda.")
+                continue
+
+            qtd_max = item_vendido.quantidade
+            quantidade = self._obter_input(f"Quantidade a devolver (máx {qtd_max}): ", tipo='int')
+            if quantidade <= 0 or quantidade > qtd_max:
+                print(f"Quantidade inválida. Deve ser entre 1 e {qtd_max}.")
+                continue
+            
+            motivo = self._obter_input("Motivo da devolução: ")
+            condicao = self._obter_input("Condição do produto (ex: 'novo', 'com defeito'): ")
+
+            itens_devolucao_info.append({
+                'produto_id': produto_id, 'quantidade': quantidade, 'motivo': motivo, 'condicao': condicao
+            })
+        
+        if not itens_devolucao_info:
+            print("\nNenhum item adicionado. Devolução cancelada.")
+            return
+
+        observacoes = self._obter_input("Observações adicionais: ", obrigatorio=False)
+        
+        try:
+            nova_devolucao = self.gerenciador.iniciar_devolucao(venda_id, itens_devolucao_info, observacoes)
+            print(f"\nDevolução #{nova_devolucao.id} registrada com sucesso. Status: '{nova_devolucao.status}'.")
+        except Exception as e:
+            print(f"\nErro ao iniciar devolução: {e}")
+
+    # método de UI para listar devoluções
+    def _listar_devolucoes(self):
+        """Exibe a lista de devoluções com seus status."""
+        self._imprimir_cabecalho("Lista de Devoluções")
+        devolucoes = self.gerenciador.devolucoes
+        if not devolucoes:
+            print("Nenhuma devolução registrada.")
+            return
+
+        for dev in sorted(devolucoes.values(), key=lambda d: d.id, reverse=True):
+            print(str(dev))
+
+    # método de UI para processar devolução
+    def _processar_devolucao_cli(self):
+        """Interface para processar uma devolução pendente."""
+        self._imprimir_cabecalho("Processar Devolução")
+        
+        devolucoes_em_aberto = {d.id: d for d in self.gerenciador.devolucoes.values() if d.status == 'solicitada'}
+        if not devolucoes_em_aberto:
+            print("Não há devoluções pendentes para processar.")
+            return
+        
+        devolucao_id = self._selecionar_em_lista("Selecione a Devolução para processar", devolucoes_em_aberto)
+        if devolucao_id is None:
+            print("\nOperação cancelada.")
+            return
+        
+        devolucao = self.gerenciador.devolucoes[devolucao_id]
+        print(f"\nProcessando Devolução #{devolucao.id} (Valor total: R$ {devolucao.valor_total_devolvido:,.2f})")
+        
+        for item in devolucao.itens:
+            print(f"   - {item.quantidade}x '{item.produto.nome}' (Motivo: {item.motivo_devolucao})")
+        
+        local_retorno_id = self._selecionar_em_lista("Selecione para qual local o estoque será retornado", self.gerenciador.localizacoes)
+        if local_retorno_id is None:
+            print("\nOperação cancelada.")
+            return
+
+        acao = self._obter_input("Ação a ser tomada: (1) Reembolso ou (2) Troca? (Digite o número): ")
+        
+        itens_troca = None
+        if acao == '2': # Troca
+            itens_troca = []
+            print(f"\n--- Iniciar Troca ---")
+            print(f"Valor do crédito da devolução: R$ {devolucao.valor_total_devolvido:,.2f}")
+            
+            while True:
+                print("\nAdicionar item para a troca (ou 0 para finalizar):")
+                produtos_disponiveis = {pid: p for pid, p in self.gerenciador.produtos.items() if p.get_estoque_total() > 0}
+                if not produtos_disponiveis:
+                    print("Nenhum produto disponível para troca.")
+                    break
+
+                produto_id = self._selecionar_em_lista(
+                    "Selecione o produto",
+                    produtos_disponiveis,
+                    prompt_personalizado="Digite o ID do produto para troca: "
+                )
+                if produto_id is None: break
+                
+                quantidade = self._obter_input("Quantidade: ", tipo='int')
+                itens_troca.append({'produto_id': produto_id, 'quantidade': quantidade})
+        
+        try:
+            devolucao_concluida, valor_troca_paga = self.gerenciador.processar_devolucao_e_troca(
+                devolucao_id, local_retorno_id, 'troca' if acao == '2' else 'reembolso', itens_troca
+            )
+            
+            print(f"\nDevolução #{devolucao_concluida.id} finalizada com sucesso!")
+            if devolucao_concluida.transacao.tipo == 'reembolso':
+                print(f"Reembolso de R$ {devolucao_concluida.transacao.valor:,.2f} emitido ao cliente.")
+            elif devolucao_concluida.transacao.tipo == 'pagamento_troca':
+                print(f"Troca concluída. Cliente pagou a diferença de R$ {devolucao_concluida.transacao.valor:,.2f}.")
+            else:
+                print(f"Troca concluída. Crédito de R$ {devolucao_concluida.transacao.valor:,.2f} gerado para o cliente.")
+
+        except Exception as e:
+            print(f"\nErro ao processar devolução: {e}")
+    
+    #  método de UI para relatório de devoluções
+    def _gerar_relatorio_devolucoes(self):
+        """chama o relatório de devoluções"""
+        self._imprimir_cabecalho("Relatório de Devoluções por Motivo")
+        report = self.gerenciador.gerar_relatorio_devolucoes_por_motivo()
+        print(report)

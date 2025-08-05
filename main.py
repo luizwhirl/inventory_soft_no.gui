@@ -1,6 +1,6 @@
 # Oiiiii. Eu tentei comentar esse código o máximo possivel pra que ficasse mais facil de se entendê-lo
 # Tambem tentei deixar os nomes de variáveis, funções e classes o mais descritivos possível
-# Alguns dos comentários foram feitos pelo copilot, mas eu revisei todos eles 
+# Alguns dos comentários foram feitos pelo copilot, mas eu revisei todos eles
 # porém, sei que pode ter uma coisa ou outra que esteja meio estranha e confusa
 # Por isso, se você tiver qualquer dúvida, pode me chamar no zap que eu respondo... em algum momento
 # 82 98763-8329
@@ -18,7 +18,7 @@ from cli import CliApp
 # --- Bloco de Execução Principal ---
 
 # esse "if __name__ == "__main__":" garante que o código dentro dele só será executado
-# quando este arquivo for rodado diretamente 
+# quando este arquivo for rodado diretamente
 # (e não quando for importado por outro arquivo)
 if __name__ == "__main__":
     # 1. vai inicializar o gerenciador do banco de dados
@@ -56,16 +56,18 @@ if __name__ == "__main__":
                 email="maria.souza@dell.com", morada="Av. Ipiranga, 6681, Inferno, PE"
             )
 
-            # adiciona produtos
-            p1 = gerenciador.adicionar_produto(nome="Notebook ROG Strix", descricao="Notebook Gamer 16GB RAM, RTX 4060", categoria="Eletrônicos", fornecedor_id=asus.id, codigo_barras="789123456001", preco_compra=5000, preco_venda=7500, ponto_ressuprimento=10)
-            p2 = gerenciador.adicionar_produto(nome="Mouse G502 Hero", descricao="Mouse Gamer com RGB e 25k DPI", categoria="Periféricos", fornecedor_id=logitech.id, codigo_barras="789789789002", preco_compra=250, preco_venda=450, ponto_ressuprimento=20)
-            p3 = gerenciador.adicionar_produto(nome="Monitor Alienware 27''", descricao="Monitor Gamer 240Hz, QHD, Fast IPS", categoria="Eletrônicos", fornecedor_id=dell.id, codigo_barras="789456123003", preco_compra=2200, preco_venda=3800, ponto_ressuprimento=5)
-            p4 = gerenciador.adicionar_produto(nome="Half-Life: Episode 3", descricao="Jogo nunca antes existido", categoria="Jogos", fornecedor_id=logitech.id, codigo_barras="789789789005", preco_compra=450, preco_venda=700, ponto_ressuprimento=15)
+            # adiciona produtos (CORRIGIDO: adicionado tipoProduto='individual')
+            p1 = gerenciador.adicionar_produto(nome="Notebook ROG Strix", descricao="Notebook Gamer 16GB RAM, RTX 4060", categoria="Eletrônicos", fornecedor_id=asus.id, codigo_barras="789123456001", preco_compra=5000, preco_venda=7500, ponto_ressuprimento=10, tipoProduto='individual')
+            p2 = gerenciador.adicionar_produto(nome="Mouse G502 Hero", descricao="Mouse Gamer com RGB e 25k DPI", categoria="Periféricos", fornecedor_id=logitech.id, codigo_barras="789789789002", preco_compra=250, preco_venda=450, ponto_ressuprimento=20, tipoProduto='individual')
+            p3 = gerenciador.adicionar_produto(nome="Monitor Alienware 27''", descricao="Monitor Gamer 240Hz, QHD, Fast IPS", categoria="Eletrônicos", fornecedor_id=dell.id, codigo_barras="789456123003", preco_compra=2200, preco_venda=3800, ponto_ressuprimento=5, tipoProduto='individual')
+            p4 = gerenciador.adicionar_produto(nome="Half-Life: Episode 3", descricao="Jogo nunca antes existido", categoria="Jogos", fornecedor_id=logitech.id, codigo_barras="789789789005", preco_compra=450, preco_venda=700, ponto_ressuprimento=15, tipoProduto='individual')
             
             # movimenta o estoque inicial
             gerenciador.movimentar_estoque(p1.id, deposito.id, 15, "Carga Inicial")
             gerenciador.movimentar_estoque(p2.id, deposito.id, 50, "Carga Inicial")
             gerenciador.movimentar_estoque(p3.id, deposito.id, 8, "Carga Inicial")
+            gerenciador.movimentar_estoque(p4.id, deposito.id, 0, "Carga Inicial")
+
 
             # Você deve ter percebido isso ja, mas só por desencargo de consciência é bom comentar
             # Essas três adições acima (localizações, fornecedores e produtos) são apenas e unicamente para se inicializar o banco de dados
