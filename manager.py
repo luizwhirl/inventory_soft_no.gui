@@ -8,11 +8,12 @@ from datetime import datetime, time
 
 # Importa as classes de modelo e o gerenciador de banco de dados
 from models import (Fornecedor, Localizacao, Produto, HistoricoMovimento,
-                    ItemOrdemCompra, OrdemCompra, ItemVenda, Venda)
+                    ItemOrdemCompra, OrdemCompra, ItemVenda, Venda,
+                    Devolucao, ItemDevolucao, Transacao)
 from database import DatabaseManager
 
 
-# --- Classe Principal de Lógica de Negócios ---
+#  classe principal de lógica de negócios 
 
 class GerenciadorEstoque:
     """cheguemos na classe principal agora"""
@@ -25,6 +26,7 @@ class GerenciadorEstoque:
         self.historico: list[HistoricoMovimento] = []
         self.ordens_compra: dict[int, OrdemCompra] = {}
         self.vendas: dict[int, Venda] = {}
+        self.devolucoes: dict[int, Devolucao] = {} # dicionário para devoluções
 
     def get_todas_categorias(self) -> list[str]:
         """Busca no banco de dados e retorna uma lista de todas as categorias de produtos distintas."""
@@ -42,6 +44,7 @@ class GerenciadorEstoque:
         self.historico.clear()
         self.ordens_compra.clear()
         self.vendas.clear()
+        self.devolucoes.clear()
 
         # carrega fornecedores
         fornecedores_data = self.db.execute_query("SELECT * FROM fornecedores", fetch='all')
@@ -112,6 +115,32 @@ class GerenciadorEstoque:
                 if (venda := self.vendas.get(v_id)) and (produto := self.produtos.get(p_id)):
                     item = ItemVenda(produto, qtd, preco)
                     venda.itens.append(item)
+
+        # Carrega as devoluções (cabeçalho)
+        devolucoes_data = self.db.execute_query("SELECT id, venda_original_id, cliente_nome, status, data, observacoes FROM devolucoes", fetch='all')
+        if devolucoes_data:
+            for row in devolucoes_data:
+                dev_id, venda_id, cliente, status, data_str, obs = row
+                if venda_original := self.vendas.get(venda_id):
+                    self.devolucoes[dev_id] = Devolucao(
+                        id=dev_id, venda_original=venda_original, cliente_nome=cliente, itens=[],
+                        status=status, data=datetime.fromisoformat(data_str), observacoes=obs
+                    )
+
+        # Carrega os itens de cada devolução
+        itens_dev_data = self.db.execute_query("SELECT devolucao_id, produto_id, quantidade, motivo_devolucao, condicao_produto FROM itens_devolucao", fetch='all')
+        if itens_dev_data:
+            for dev_id, p_id, qtd, motivo, condicao in itens_dev_data:
+                if (devolucao := self.devolucoes.get(dev_id)) and (produto := self.produtos.get(p_id)):
+                    devolucao.itens.append(ItemDevolucao(produto, qtd, motivo, condicao))
+
+        # Carrega as transações de cada devolução
+        transacoes_data = self.db.execute_query("SELECT id, devolucao_id, tipo, valor, data FROM transacoes", fetch='all')
+        if transacoes_data:
+            for t_id, dev_id, tipo, valor, data_str in transacoes_data:
+                if devolucao := self.devolucoes.get(dev_id):
+                    devolucao.transacao = Transacao(t_id, dev_id, tipo, valor, datetime.fromisoformat(data_str))
+
         print("Dados carregados com sucesso.")
 
     def registrar_venda(self, itens_info: list[dict], nome_cliente: str, localizacao_id: int) -> tuple[Venda, list[Produto]]:
@@ -334,6 +363,7 @@ class GerenciadorEstoque:
         # Registra a movimentação no histórico
         agora = datetime.now()
         query_hist = "INSERT INTO historico_movimentos (produto_id, localizacao_id, tipo, quantidade, data) VALUES (?, ?, ?, ?, ?)"
+        # --- ESTA É A LINHA CORRIGIDA ---
         self.db.execute_query(query_hist, (produto_id, localizacao_id, tipo_movimento, quantidade, agora.isoformat()))
 
         # Atualiza os dados em memória
@@ -431,9 +461,9 @@ Data de Geração: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
 Valor Total do Estoque: R$ {self.calcular_valor_total_estoque():.2f}
 {'='*80}\n\n"""
         for produto in sorted(self.produtos.values(), key=lambda p: p.nome):
-            estoque_locais = "\n".join([f"      - {local}: {qtd} unidades" for local, qtd in produto.estoque_por_local.items() if qtd > 0])
+            estoque_locais = "\n".join([f"           - {local}: {qtd} unidades" for local, qtd in produto.estoque_por_local.items() if qtd > 0])
             if not estoque_locais:
-                estoque_locais = "      - Sem estoque registrado"
+                estoque_locais = "           - Sem estoque registrado"
 
             report += f"""ID: {produto.id} - {produto.nome} ({produto.categoria})
   Estoque Total: {produto.get_estoque_total()} unidades
@@ -528,13 +558,120 @@ Período: {data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}
                 total_itens_vendidos += item.quantidade
                 receita_total += item.subtotal
                 lucro_total += lucro_item
-                report += f"  - Produto: {item.produto.nome:<25} | Qtd: {item.quantidade}\n"
-            report += f"  Subtotal Venda: R$ {venda.valor_total:.2f}\n{'-'*20}\n"
+                report += f"   - Produto: {item.produto.nome:<25} | Qtd: {item.quantidade}\n"
+            report += f"   Subtotal Venda: R$ {venda.valor_total:.2f}\n{'-'*20}\n"
 
         report += f"\n{'-'*30}\nRESUMO DO PERÍODO\n{'-'*30}\n"
         report += f"Total de Itens Vendidos: {total_itens_vendidos}\n"
         report += f"Receita Bruta Total: R$ {receita_total:.2f}\n"
         report += f"Lucro Bruto Total: R$ {lucro_total:.2f}\n"
 
+        return report
+    
+    def iniciar_devolucao(self, venda_id: int, itens_devolucao_info: list[dict], observacoes: str) -> Devolucao:
+        """Inicia um novo processo de devolução no banco de dados e em memória."""
+        if not (venda_original := self.vendas.get(venda_id)):
+            raise ValueError("Venda original não encontrada.")
+        
+        if not itens_devolucao_info:
+            raise ValueError("Nenhum item para devolução foi especificado.")
+
+        # Validação: checa se a quantidade devolvida não excede a quantidade vendida
+        for item_dev_info in itens_devolucao_info:
+            produto_id = item_dev_info['produto_id']
+            qtd_devolvida = item_dev_info['quantidade']
+            item_vendido = next((item for item in venda_original.itens if item.produto.id == produto_id), None)
+            if not item_vendido or qtd_devolvida > item_vendido.quantidade:
+                raise ValueError(f"Quantidade de devolução para o produto ID {produto_id} excede a quantidade vendida.")
+
+        agora = datetime.now()
+        query_dev = "INSERT INTO devolucoes (venda_original_id, cliente_nome, status, data, observacoes) VALUES (?, ?, ?, ?, ?)"
+        novo_id_dev = self.db.execute_query(query_dev, (venda_id, venda_original.cliente, "solicitada", agora.isoformat(), observacoes))
+
+        itens_dev_obj = []
+        for item_dev_info in itens_devolucao_info:
+            produto = self.produtos[item_dev_info['produto_id']]
+            query_item = "INSERT INTO itens_devolucao (devolucao_id, produto_id, quantidade, motivo_devolucao, condicao_produto) VALUES (?, ?, ?, ?, ?)"
+            self.db.execute_query(query_item, (novo_id_dev, produto.id, item_dev_info['quantidade'], item_dev_info['motivo'], item_dev_info['condicao']))
+            itens_dev_obj.append(ItemDevolucao(produto, item_dev_info['quantidade'], item_dev_info['motivo'], item_dev_info['condicao']))
+        
+        nova_devolucao = Devolucao(novo_id_dev, venda_original, venda_original.cliente, itens_dev_obj, "solicitada", agora, observacoes)
+        self.devolucoes[novo_id_dev] = nova_devolucao
+        return nova_devolucao
+
+    def processar_devolucao_e_troca(self, devolucao_id: int, local_retorno_id: int, acao: str, itens_troca_info: list[dict] | None = None) -> tuple[Devolucao, float]:
+        """Processa uma devolução, atualizando o estoque e, opcionalmente, gerando uma troca."""
+        if not (devolucao := self.devolucoes.get(devolucao_id)):
+            raise ValueError("Devolução não encontrada.")
+        if devolucao.status != "solicitada":
+            raise ValueError(f"A devolução #{devolucao_id} já foi processada. Status atual: {devolucao.status}.")
+        if not (local_retorno := self.localizacoes.get(local_retorno_id)):
+            raise ValueError("Localização de retorno do estoque inválida.")
+
+        # Passo 1: Retorna os itens devolvidos ao estoque
+        for item in devolucao.itens:
+            # Usa o método existente de movimentação de estoque para entrada
+            self.movimentar_estoque(
+                produto_id=item.produto.id,
+                localizacao_id=local_retorno_id,
+                quantidade=item.quantidade,
+                tipo_movimento=f"Devolução #{devolucao.id} - Retorno de Produto"
+            )
+        
+        valor_credito = devolucao.valor_total_devolvido
+        valor_troca_paga = 0.0
+
+        # Passo 2: Lida com a ação (reembolso ou troca)
+        if acao == 'troca' and itens_troca_info:
+            # Processa a nova "venda" da troca, mas sem alterar o estoque temporário
+            itens_nova_venda = []
+            for item_troca_info in itens_troca_info:
+                produto = self.produtos.get(item_troca_info['produto_id'])
+                if not produto: raise ValueError(f"Produto de troca com ID {item_troca_info['produto_id']} não encontrado.")
+                itens_nova_venda.append({'produto_id': produto.id, 'quantidade': item_troca_info['quantidade']})
+            
+            # Registra a nova venda da troca e calcula o valor a pagar/creditar
+            nova_venda, _ = self.registrar_venda(itens_nova_venda, devolucao.cliente_nome, local_retorno_id)
+            devolucao.nova_venda_troca = nova_venda
+            
+            valor_total_troca = nova_venda.valor_total
+            valor_troca_paga = max(0, valor_total_troca - valor_credito)
+            tipo_transacao = "pagamento_troca" if valor_troca_paga > 0 else "credito_troca"
+            
+            valor_final_transacao = valor_troca_paga if valor_troca_paga > 0 else (valor_credito - valor_total_troca)
+            
+            # Insere a transação no banco
+            query_trans = "INSERT INTO transacoes (devolucao_id, tipo, valor, data) VALUES (?, ?, ?, ?)"
+            trans_id = self.db.execute_query(query_trans, (devolucao.id, tipo_transacao, valor_final_transacao, datetime.now().isoformat()))
+            devolucao.transacao = Transacao(trans_id, devolucao.id, tipo_transacao, valor_final_transacao)
+
+        else: # Ação é 'reembolso'
+            query_trans = "INSERT INTO transacoes (devolucao_id, tipo, valor, data) VALUES (?, ?, ?, ?)"
+            trans_id = self.db.execute_query(query_trans, (devolucao.id, "reembolso", valor_credito, datetime.now().isoformat()))
+            devolucao.transacao = Transacao(trans_id, devolucao.id, "reembolso", valor_credito)
+
+        # Passo 3: Atualiza o status da devolução para 'concluida'
+        self.db.execute_query("UPDATE devolucoes SET status = 'concluida' WHERE id = ?", (devolucao.id,))
+        devolucao.status = 'concluida'
+        
+        return devolucao, valor_troca_paga
+
+    def gerar_relatorio_devolucoes_por_motivo(self):
+        """gera um relatório de devoluções agrupadas por motivo"""
+        report = f"""RELATÓRIO DE DEVOLUÇÕES POR MOTIVO
+Data de Geração: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
+{'='*70}\n
+"""
+        motivos = Counter()
+        for devolucao in self.devolucoes.values():
+            for item in devolucao.itens:
+                motivos[item.motivo_devolucao] += item.quantidade
+        
+        if not motivos:
+            return report + "Nenhuma devolução registrada."
+
+        for motivo, qtd in motivos.items():
+            report += f"Motivo: {motivo:<30} | Quantidade de Itens: {qtd}\n"
+        
         return report
     #endregion

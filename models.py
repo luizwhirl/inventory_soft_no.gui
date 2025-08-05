@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from collections import defaultdict
 from datetime import datetime
 
-# --- Classes de Dados (Models) ---
+#  Classes de Dados (Models) 
 
 # region Data Classes
 
@@ -123,5 +123,57 @@ class Venda:
     @property
     def valor_total(self) -> float:
         return sum(item.subtotal for item in self.itens)
+    
+    def __str__(self):
+        """pra deixar mais bonitinho"""
+        valor_formatado = f"R$ {self.valor_total:,.2f}"
+        data_formatada = self.data.strftime('%d/%m/%Y')
+        return f"Venda #{self.id} | Data: {data_formatada} | Cliente: {self.cliente} | Valor: {valor_formatado}"
+
+@dataclass
+class ItemDevolucao:
+    """representa um produto específico dentro de um processo de devolução"""
+    produto: Produto
+    quantidade: int
+    motivo_devolucao: str
+    condicao_produto: str # tipo um "novo", "com defeito", "danificado"
+
+    @property
+    def subtotal(self) -> float:
+        """vai caclcular o valor do item devolvido (que é baseado no preço de venda da compra original)"""
+        return self.quantidade * self.produto.preco_venda
+
+@dataclass
+class Transacao:
+    """representa o movimento financeiro associado a uma devolução oi troca"""
+    id: int
+    devolucao_id: int
+    tipo: str # "reembolso", "credito", "pagamento_troca"
+    valor: float
+    data: datetime = field(default_factory=datetime.now)
+
+@dataclass
+class Devolucao:
+    """representa o processo geral de devolução ou troca"""
+    id: int
+    venda_original: Venda
+    cliente_nome: str
+    itens: list[ItemDevolucao]
+    status: str # solicitada, em analise, aprovada, concluida
+    data: datetime = field(default_factory=datetime.now)
+    observacoes: str = ""
+    transacao: Transacao | None = None
+    nova_venda_troca: Venda | None = None
+
+    @property
+    def valor_total_devolvido(self) -> float:
+        return sum(item.subtotal for item in self.itens)
+
+    def __str__(self):
+        valor_formatado = f"R$ {self.valor_total_devolvido:,.2f}"
+        data_formatada = self.data.strftime('%d/%m/%Y')
+        return (f"Devolução #{self.id} | {data_formatada} | "
+                f"Venda Orig.: #{self.venda_original.id} | Cliente: {self.cliente_nome} | "
+                f"Status: {self.status}")
 
 #endregion

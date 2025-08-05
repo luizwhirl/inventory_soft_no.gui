@@ -8,7 +8,7 @@ import os
 from datetime import datetime, time
 
 from manager import GerenciadorEstoque
-from models import Produto, Localizacao, OrdemCompra # Para type hints e checagens de instância
+from models import Produto, Localizacao, OrdemCompra, Devolucao # Para type hints e checagens de instância
 from config import REPORTLAB_DISPONIVEL # Flag para saber se pode gerar PDF
 
 # Condicional para importar o ReportLab apenas se disponível.
@@ -17,7 +17,7 @@ if REPORTLAB_DISPONIVEL:
     from reportlab.lib.pagesizes import letter
     from reportlab.lib.units import inch
 
-# --- Classe da Interface de Linha de Comando ---
+#  Classe da Interface de Linha de Comando 
 
 class CliApp:
     """Gerencia toda a interface de linha de comando."""
@@ -118,7 +118,8 @@ class CliApp:
             print("4. Registrar Venda")
             print("5. Gerenciar Ordens de Compra")
             print("6. Gerar Relatórios")
-            print("7. Sair")
+            print("7. Gerenciar Devoluções e Trocas") # NOVA OPÇÃO
+            print("8. Sair")
 
             escolha = self._obter_input("\nEscolha uma opção: ")
 
@@ -128,7 +129,8 @@ class CliApp:
             elif escolha == '4': self._registrar_venda()
             elif escolha == '5': self._menu_ordens_compra()
             elif escolha == '6': self._menu_relatorios()
-            elif escolha == '7':
+            elif escolha == '7': self._menu_devolucoes() # CHAMA NOVO SUBMENU
+            elif escolha == '8':
                 print("Saindo do sistema...")
                 break
             else:
@@ -228,7 +230,8 @@ class CliApp:
             tipos = [
                 "Inventário Completo (Simplificado)", "Valor Total do Inventário",
                 "Produtos com Baixo Estoque", "Produtos Mais Vendidos",
-                "Histórico de Movimentação por Item", "Relatório de Vendas por Período"
+                "Histórico de Movimentação por Item", "Relatório de Vendas por Período",
+                "Relatório de Devoluções por Motivo"
             ]
             for i, tipo in enumerate(tipos, 1):
                 print(f"{i}. {tipo}")
@@ -237,11 +240,34 @@ class CliApp:
             escolha = self._obter_input("\nEscolha o tipo de relatório: ", tipo='int')
             if escolha == 0: break
             if 1 <= escolha <= len(tipos):
-                self._gerar_relatorio_detalhado(tipos[escolha - 1])
+                # NOVO RELATÓRIO
+                if tipos[escolha - 1] == "Relatório de Devoluções por Motivo":
+                    self._gerar_relatorio_devolucoes()
+                else:
+                    self._gerar_relatorio_detalhado(tipos[escolha - 1])
                 self._esperar_enter()
             else:
                 print("Opção inválida!")
                 self._esperar_enter()
+
+    # --- NOVO SUBMENU E MÉTODOS PARA DEVOLUÇÕES E TROCAS ---
+    def _menu_devolucoes(self):
+        """Exibe o submenu para gerenciamento de devoluções e trocas."""
+        while True:
+            self._imprimir_cabecalho("Gerenciar Devoluções e Trocas")
+            print("1. Iniciar nova Devolução/Troca")
+            print("2. Listar Devoluções (em aberto e concluídas)")
+            print("3. Processar Devolução (Analisar e Finalizar)")
+            print("0. Voltar ao Menu Principal")
+
+            escolha = self._obter_input("\nEscolha uma opção: ")
+
+            if escolha == '1': self._iniciar_devolucao_cli()
+            elif escolha == '2': self._listar_devolucoes()
+            elif escolha == '3': self._processar_devolucao_cli()
+            elif escolha == '0': break
+            else: print("Opção inválida!")
+            self._esperar_enter()
 
     # --- Implementação das Ações ---
 
@@ -817,7 +843,7 @@ class CliApp:
         """Formata os dados de uma Ordem de Compra em um texto legível."""
         linhas = [
             "==========================================",
-            "          ORDEM DE COMPRA (RECIBO)          ",
+            "           ORDEM DE COMPRA (RECIBO)           ",
             "==========================================",
             f"Número do Pedido: {ordem.id}",
             f"Data de Emissão: {ordem.data_criacao.strftime('%d/%m/%Y %H:%M:%S')}",
@@ -827,7 +853,7 @@ class CliApp:
             f"Nome do Contato: {ordem.fornecedor.nome}",
             f"Telefone: {ordem.fornecedor.telefone}",
             f"Email: {ordem.fornecedor.email}",
-            f"Morada: {ordem.fornecedor.morada}",
+            f"Endereço: {ordem.fornecedor.morada}",
             "\n--- ITENS DO PEDIDO ---"
         ]
 
@@ -934,7 +960,154 @@ class CliApp:
                     data_fim = datetime.combine(datetime.strptime(str_fim, "%d/%m/%Y"), time.max)
                     report_text = self.gerenciador.gerar_relatorio_vendas_periodo(data_inicio, data_fim)
                 else: return # Cancela se as datas não forem inseridas
+            elif tipo_relatorio == "Relatório de Devoluções por Motivo":
+                report_text = self.gerenciador.gerar_relatorio_devolucoes_por_motivo()
 
             print(report_text)
         except Exception as e:
             print(f"Erro ao gerar relatório: {e}")
+
+    # novo método de UI para iniciar devolução
+    def _iniciar_devolucao_cli(self):
+        """Interface para iniciar uma nova devolução."""
+        self._imprimir_cabecalho("Iniciar Nova Devolução/Troca")
+        
+        # Seleciona a venda original
+        vendas_validas = {v.id: v for v in self.gerenciador.vendas.values()}
+        if not vendas_validas:
+            print("Não há vendas registradas para iniciar uma devolução.")
+            self._esperar_enter()
+            return
+            
+        venda_id = self._selecionar_em_lista("Selecione a Venda Original", vendas_validas)
+        if venda_id is None:
+            print("\nOperação cancelada.")
+            return
+
+        venda_original = self.gerenciador.vendas[venda_id]
+        print(f"\nDetalhes da Venda #{venda_id} - Cliente: {venda_original.cliente}:")
+        print("Itens na venda original:")
+        for item in venda_original.itens:
+            print(f"   - ID: {item.produto.id}, Produto: {item.produto.nome}, Qtd: {item.quantidade}, Preço Un: R$ {item.preco_venda_unitario:,.2f}")
+
+        itens_devolucao_info = []
+        while True:
+            print("\nAdicionar item para devolução (ou 0 para finalizar):")
+            produto_id = self._obter_input("ID do Produto: ", tipo='int')
+            if produto_id == 0: break
+            
+            item_vendido = next((item for item in venda_original.itens if item.produto.id == produto_id), None)
+            if not item_vendido:
+                print("Produto não encontrado nesta venda.")
+                continue
+
+            qtd_max = item_vendido.quantidade
+            quantidade = self._obter_input(f"Quantidade a devolver (máx {qtd_max}): ", tipo='int')
+            if quantidade <= 0 or quantidade > qtd_max:
+                print(f"Quantidade inválida. Deve ser entre 1 e {qtd_max}.")
+                continue
+            
+            motivo = self._obter_input("Motivo da devolução (ex: 'com defeito', 'tamanho errado'): ")
+            condicao = self._obter_input("Condição do produto (ex: 'novo', 'com defeito'): ")
+
+            itens_devolucao_info.append({
+                'produto_id': produto_id, 'quantidade': quantidade, 'motivo': motivo, 'condicao': condicao
+            })
+        
+        if not itens_devolucao_info:
+            print("\nNenhum item adicionado. Devolução cancelada.")
+            return
+
+        observacoes = self._obter_input("Observações adicionais: ", obrigatorio=False)
+        
+        try:
+            nova_devolucao = self.gerenciador.iniciar_devolucao(venda_id, itens_devolucao_info, observacoes)
+            print(f"\nDevolução #{nova_devolucao.id} registrada com sucesso. Status: '{nova_devolucao.status}'.")
+        except Exception as e:
+            print(f"\nErro ao iniciar devolução: {e}")
+
+    # método de UI para listar devoluções
+    def _listar_devolucoes(self):
+        """Exibe a lista de devoluções com seus status."""
+        self._imprimir_cabecalho("Lista de Devoluções")
+        devolucoes = self.gerenciador.devolucoes
+        if not devolucoes:
+            print("Nenhuma devolução registrada.")
+            return
+
+        for dev in sorted(devolucoes.values(), key=lambda d: d.id, reverse=True):
+            print(str(dev))
+
+    # método de UI para processar devolução
+    def _processar_devolucao_cli(self):
+        """Interface para processar uma devolução pendente."""
+        self._imprimir_cabecalho("Processar Devolução")
+        
+        devolucoes_em_aberto = {d.id: d for d in self.gerenciador.devolucoes.values() if d.status == 'solicitada'}
+        if not devolucoes_em_aberto:
+            print("Não há devoluções pendentes para processar.")
+            return
+        
+        devolucao_id = self._selecionar_em_lista("Selecione a Devolução para processar", devolucoes_em_aberto)
+        if devolucao_id is None:
+            print("\nOperação cancelada.")
+            return
+        
+        devolucao = self.gerenciador.devolucoes[devolucao_id]
+        print(f"\nProcessando Devolução #{devolucao.id} (Valor total: R$ {devolucao.valor_total_devolvido:,.2f})")
+        
+        for item in devolucao.itens:
+            print(f"   - {item.quantidade}x '{item.produto.nome}' (Motivo: {item.motivo_devolucao})")
+        
+        local_retorno_id = self._selecionar_em_lista("Selecione para qual local o estoque será retornado", self.gerenciador.localizacoes)
+        if local_retorno_id is None:
+            print("\nOperação cancelada.")
+            return
+
+        acao = self._obter_input("Ação a ser tomada: (1) Reembolso ou (2) Troca? (Digite o número): ")
+        
+        itens_troca = None
+        if acao == '2': # Troca
+            itens_troca = []
+            print(f"\n--- Iniciar Troca ---")
+            print(f"Valor do crédito da devolução: R$ {devolucao.valor_total_devolvido:,.2f}")
+            
+            while True:
+                print("\nAdicionar item para a troca (ou 0 para finalizar):")
+                produtos_disponiveis = {pid: p for pid, p in self.gerenciador.produtos.items() if p.get_estoque_total() > 0}
+                if not produtos_disponiveis:
+                    print("Nenhum produto disponível para troca.")
+                    break
+
+                produto_id = self._selecionar_em_lista(
+                    "Selecione o produto",
+                    produtos_disponiveis,
+                    prompt_personalizado="Digite o ID do produto para troca: "
+                )
+                if produto_id is None: break
+                
+                quantidade = self._obter_input("Quantidade: ", tipo='int')
+                itens_troca.append({'produto_id': produto_id, 'quantidade': quantidade})
+        
+        try:
+            devolucao_concluida, valor_troca_paga = self.gerenciador.processar_devolucao_e_troca(
+                devolucao_id, local_retorno_id, 'troca' if acao == '2' else 'reembolso', itens_troca
+            )
+            
+            print(f"\nDevolução #{devolucao_concluida.id} finalizada com sucesso!")
+            if devolucao_concluida.transacao.tipo == 'reembolso':
+                print(f"Reembolso de R$ {devolucao_concluida.transacao.valor:,.2f} emitido ao cliente.")
+            elif devolucao_concluida.transacao.tipo == 'pagamento_troca':
+                print(f"Troca concluída. Cliente pagou a diferença de R$ {devolucao_concluida.transacao.valor:,.2f}.")
+            else:
+                print(f"Troca concluída. Crédito de R$ {devolucao_concluida.transacao.valor:,.2f} gerado para o cliente.")
+
+        except Exception as e:
+            print(f"\nErro ao processar devolução: {e}")
+    
+    # NOVO método de UI para relatório de devoluções
+    def _gerar_relatorio_devolucoes(self):
+        """Chama o novo relatório de devoluções."""
+        self._imprimir_cabecalho("Relatório de Devoluções por Motivo")
+        report = self.gerenciador.gerar_relatorio_devolucoes_por_motivo()
+        print(report)

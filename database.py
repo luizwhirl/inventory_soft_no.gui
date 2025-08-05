@@ -140,6 +140,40 @@ class DatabaseManager:
                 FOREIGN KEY (venda_id) REFERENCES vendas(id) ON DELETE CASCADE,
                 FOREIGN KEY (produto_id) REFERENCES produtos(id) ON DELETE CASCADE
             );
+            """,
+            # --- NOVAS TABELAS PARA DEVOLUÇÕES E TROCAS ---
+            """
+            CREATE TABLE IF NOT EXISTS devolucoes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                venda_original_id INTEGER NOT NULL,
+                cliente_nome TEXT NOT NULL,
+                status TEXT NOT NULL,
+                data TEXT NOT NULL,
+                observacoes TEXT,
+                FOREIGN KEY (venda_original_id) REFERENCES vendas(id)
+            );
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS itens_devolucao (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                devolucao_id INTEGER NOT NULL,
+                produto_id INTEGER NOT NULL,
+                quantidade INTEGER NOT NULL,
+                motivo_devolucao TEXT NOT NULL,
+                condicao_produto TEXT NOT NULL,
+                FOREIGN KEY (devolucao_id) REFERENCES devolucoes(id) ON DELETE CASCADE,
+                FOREIGN KEY (produto_id) REFERENCES produtos(id)
+            );
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS transacoes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                devolucao_id INTEGER NOT NULL,
+                tipo TEXT NOT NULL,
+                valor REAL NOT NULL,
+                data TEXT NOT NULL,
+                FOREIGN KEY (devolucao_id) REFERENCES devolucoes(id) ON DELETE CASCADE
+            );
             """
         ]
         # exeutando cada uma das queries de criação de tabela
