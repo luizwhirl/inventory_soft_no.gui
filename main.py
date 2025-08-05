@@ -1,6 +1,6 @@
 # Oiiiii. Eu tentei comentar esse código o máximo possivel pra que ficasse mais facil de se entendê-lo
 # Tambem tentei deixar os nomes de variáveis, funções e classes o mais descritivos possível
-# Alguns dos comentários foram feitos pelo copilot, mas eu revisei todos eles 
+# Alguns dos comentários foram feitos pelo copilot, mas eu revisei todos eles
 # porém, sei que pode ter uma coisa ou outra que esteja meio estranha e confusa
 # Por isso, se você tiver qualquer dúvida, pode me chamar no zap que eu respondo... em algum momento
 # 82 98763-8329
@@ -18,7 +18,7 @@ from cli import CliApp
 # --- Bloco de Execução Principal ---
 
 # esse "if __name__ == "__main__":" garante que o código dentro dele só será executado
-# quando este arquivo for rodado diretamente 
+# quando este arquivo for rodado diretamente
 # (e não quando for importado por outro arquivo)
 if __name__ == "__main__":
     # 1. vai inicializar o gerenciador do banco de dados

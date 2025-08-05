@@ -9,11 +9,11 @@ from datetime import datetime, time
 # Importa as classes de modelo e o gerenciador de banco de dados
 from models import (Fornecedor, Localizacao, Produto, HistoricoMovimento,
                     ItemOrdemCompra, OrdemCompra, ItemVenda, Venda,
-                    Devolucao, ItemDevolucao, Transacao)
+                    Devolucao, ItemDevolucao, Transacao, ComponenteKit)
 from database import DatabaseManager
 
 
-#  classe principal de lógica de negócios 
+#  classe principal de lógica de negócios
 
 class GerenciadorEstoque:
     """cheguemos na classe principal agora"""
@@ -62,10 +62,15 @@ class GerenciadorEstoque:
         produtos_data = self.db.execute_query("SELECT * FROM produtos", fetch='all')
         if produtos_data:
             for row in produtos_data:
-                prod_id, nome, desc, cat, cod, p_compra, p_venda, p_ress, forn_id = row
+                prod_id, nome, desc, cat, cod, p_compra, p_venda, p_ress, forn_id, tipo_prod = row
                 fornecedor_obj = self.fornecedores.get(forn_id)
                 if fornecedor_obj:
-                    self.produtos[prod_id] = Produto(prod_id, nome, desc, cat, fornecedor_obj, cod, p_compra, p_venda, p_ress)
+                    self.produtos[prod_id] = Produto(
+                        id=prod_id, nome=nome, descricao=desc, categoria=cat, 
+                        fornecedor=fornecedor_obj, codigo_barras=cod, 
+                        preco_compra=p_compra, preco_venda=p_venda, 
+                        ponto_ressuprimento=p_ress, tipoProduto=tipo_prod
+                    )
 
         # carrega o estoque de cada produto em cada localização
         query_estoque = "SELECT p.id, l.nome, e.quantidade FROM estoque e JOIN produtos p ON e.produto_id = p.id JOIN localizacoes l ON e.localizacao_id = l.id"
@@ -74,6 +79,18 @@ class GerenciadorEstoque:
             for prod_id, local_nome, qtd in estoque_data:
                 if prod_id in self.produtos:
                     self.produtos[prod_id].estoque_por_local[local_nome] = qtd
+        
+        # Carrega os componentes dos kits
+        componentes_data = self.db.execute_query("SELECT kit_produto_id, componente_produto_id, quantidade FROM componentes_kit", fetch='all')
+        if componentes_data:
+            for kit_id, comp_id, qtd in componentes_data:
+                if (kit := self.produtos.get(kit_id)) and (componente_prod := self.produtos.get(comp_id)):
+                    kit.componentes.append(ComponenteKit(produto=componente_prod, quantidade=qtd))
+            # Recalcula o preço de compra dos kits com base nos componentes carregados
+            for produto in self.produtos.values():
+                if produto.tipoProduto == 'kit':
+                    produto.recalcular_preco_compra()
+
 
         # carrega o histórico de movimentações
         query_hist = "SELECT produto_id, localizacao_id, tipo, quantidade, data FROM historico_movimentos"
@@ -155,9 +172,16 @@ class GerenciadorEstoque:
         # Validação de estoque antes de qualquer alteração no banco
         for item_info in itens_info:
             produto = self.produtos[item_info['produto_id']]
-            estoque_local = produto.estoque_por_local.get(localizacao.nome, 0)
-            if estoque_local < item_info['quantidade']:
-                raise ValueError(f"Estoque insuficiente para '{produto.nome}' na localização '{localizacao.nome}'.")
+            quantidade_vendida = item_info['quantidade']
+            
+            if produto.tipoProduto == 'kit':
+                estoque_montavel = produto.get_estoque_total()
+                if estoque_montavel < quantidade_vendida:
+                    raise ValueError(f"Estoque de componentes insuficiente para montar {quantidade_vendida} unidade(s) do kit '{produto.nome}'. Apenas {estoque_montavel} possível(is).")
+            else: # Produto individual
+                estoque_local = produto.estoque_por_local.get(localizacao.nome, 0)
+                if estoque_local < quantidade_vendida:
+                    raise ValueError(f"Estoque insuficiente para '{produto.nome}' na localização '{localizacao.nome}'.")
 
         agora = datetime.now()
         query_venda = "INSERT INTO vendas (cliente_nome, data) VALUES (?, ?)"
@@ -165,27 +189,39 @@ class GerenciadorEstoque:
 
         produtos_para_alertar = []
         itens_venda_obj = []
+        
         for item_info in itens_info:
             produto_id = item_info['produto_id']
             quantidade = item_info['quantidade']
-            produto = self.produtos[produto_id]
-            preco_unitario_venda = produto.preco_venda
+            produto_vendido = self.produtos[produto_id]
+            preco_unitario_venda = produto_vendido.preco_venda
 
             query_item = "INSERT INTO itens_venda (venda_id, produto_id, quantidade, preco_venda_unitario) VALUES (?, ?, ?, ?)"
             self.db.execute_query(query_item, (nova_venda_id, produto_id, quantidade, preco_unitario_venda))
+            
+            # Se for um kit, debita o estoque dos componentes. Se for individual, debita do produto.
+            if produto_vendido.tipoProduto == 'kit':
+                for comp in produto_vendido.componentes:
+                    qtd_a_debitar = comp.quantidade * quantidade
+                    _, produto_alertado = self.movimentar_estoque(
+                        produto_id=comp.produto.id,
+                        localizacao_id=localizacao_id,
+                        quantidade=-qtd_a_debitar,
+                        tipo_movimento=f"Componente Venda Kit #{nova_venda_id}"
+                    )
+                    if produto_alertado and produto_alertado not in produtos_para_alertar:
+                        produtos_para_alertar.append(produto_alertado)
+            else: # Produto Individual
+                _, produto_alertado = self.movimentar_estoque(
+                    produto_id=produto_id,
+                    localizacao_id=localizacao_id,
+                    quantidade=-quantidade,
+                    tipo_movimento=f"Venda #{nova_venda_id}"
+                )
+                if produto_alertado and produto_alertado not in produtos_para_alertar:
+                    produtos_para_alertar.append(produto_alertado)
 
-            # Movimenta o estoque (saída) e verifica se atingiu o ponto de ressuprimento
-            _, produto_alertado = self.movimentar_estoque(
-                produto_id=produto_id,
-                localizacao_id=localizacao_id,
-                quantidade=-quantidade,
-                tipo_movimento=f"Venda #{nova_venda_id}"
-            )
-
-            if produto_alertado:
-                produtos_para_alertar.append(produto_alertado)
-
-            item_obj = ItemVenda(produto, quantidade, preco_unitario_venda)
+            item_obj = ItemVenda(produto_vendido, quantidade, preco_unitario_venda)
             itens_venda_obj.append(item_obj)
 
         # Atualiza o objeto de venda em memória
@@ -291,12 +327,12 @@ class GerenciadorEstoque:
         if not (fornecedor := self.fornecedores.get(fornecedor_id)):
             raise ValueError("Fornecedor não encontrado.")
 
-        query = """INSERT INTO produtos (nome, descricao, categoria, codigo_barras, preco_compra, preco_venda, ponto_ressuprimento, fornecedor_id)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)"""
+        query = """INSERT INTO produtos (nome, descricao, categoria, codigo_barras, preco_compra, preco_venda, ponto_ressuprimento, fornecedor_id, tipo_produto)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"""
         params = (
             kwargs['nome'], kwargs.get('descricao', ''), kwargs.get('categoria', ''),
             kwargs.get('codigo_barras', ''), kwargs['preco_compra'], kwargs['preco_venda'],
-            kwargs['ponto_ressuprimento'], fornecedor_id
+            kwargs['ponto_ressuprimento'], fornecedor_id, kwargs['tipoProduto']
         )
         novo_id = self.db.execute_query(query, params)
         novo_produto = Produto(id=novo_id, fornecedor=fornecedor, **kwargs)
@@ -307,9 +343,11 @@ class GerenciadorEstoque:
         """Atualiza os dados de um produto."""
         if produto_id not in self.produtos: return False
 
+        produto = self.produtos[produto_id]
+        
         query = """UPDATE produtos SET nome=?, descricao=?, categoria=?, codigo_barras=?,
-                                     preco_compra=?, preco_venda=?, ponto_ressuprimento=?, fornecedor_id=?
-                                     WHERE id=?"""
+                                      preco_compra=?, preco_venda=?, ponto_ressuprimento=?, fornecedor_id=?
+                                      WHERE id=?"""
 
         fornecedor_id = int(kwargs.get('fornecedor_id'))
         if not (fornecedor_obj := self.fornecedores.get(fornecedor_id)): return False
@@ -322,12 +360,16 @@ class GerenciadorEstoque:
         self.db.execute_query(query, params)
 
         # Atualiza o objeto em memória
-        produto = self.produtos[produto_id]
         kwargs['fornecedor'] = fornecedor_obj
         del kwargs['fornecedor_id']
         for key, value in kwargs.items():
             if hasattr(produto, key):
                 setattr(produto, key, value)
+        
+        # Se for um kit, o preço de compra deve ser recalculado
+        if produto.tipoProduto == 'kit':
+            produto.recalcular_preco_compra()
+            
         return True
 
     def remover_produto(self, produto_id):
@@ -338,6 +380,18 @@ class GerenciadorEstoque:
             del self.produtos[produto_id]
             return True
         return False
+    
+    def verificar_se_produto_e_componente(self, produto_id: int) -> list[str]:
+        """Verifica se um produto é componente de algum kit e retorna os nomes dos kits."""
+        kits_afetados = []
+        for kit in self.produtos.values():
+            if kit.tipoProduto == 'kit':
+                for componente in kit.componentes:
+                    if componente.produto.id == produto_id:
+                        kits_afetados.append(kit.nome)
+                        break
+        return kits_afetados
+
 
     def movimentar_estoque(self, produto_id, localizacao_id, quantidade, tipo_movimento):
         """Realiza uma movimentação de estoque (entrada/saída) e a registra no histórico."""
@@ -345,6 +399,9 @@ class GerenciadorEstoque:
         localizacao = self.localizacoes.get(localizacao_id)
         if not all([produto, localizacao]):
             raise ValueError("Produto ou Localização inválido.")
+        
+        if produto.tipoProduto == 'kit':
+            raise ValueError("Não é possível movimentar o estoque de um kit diretamente. A movimentação ocorre através dos seus componentes.")
 
         estoque_anterior = produto.get_estoque_total()
         estoque_local_anterior = produto.estoque_por_local.get(localizacao.nome, 0)
@@ -363,7 +420,6 @@ class GerenciadorEstoque:
         # Registra a movimentação no histórico
         agora = datetime.now()
         query_hist = "INSERT INTO historico_movimentos (produto_id, localizacao_id, tipo, quantidade, data) VALUES (?, ?, ?, ?, ?)"
-        # --- ESTA É A LINHA CORRIGIDA ---
         self.db.execute_query(query_hist, (produto_id, localizacao_id, tipo_movimento, quantidade, agora.isoformat()))
 
         # Atualiza os dados em memória
@@ -445,47 +501,87 @@ class GerenciadorEstoque:
         ordem.status = novo_status # Atualiza o objeto em memória
         return True
 
+    def definir_componentes_kit(self, kit_id: int, componentes_info: list[dict]):
+        """Define ou atualiza a lista de componentes de um kit."""
+        if not (kit := self.produtos.get(kit_id)) or kit.tipoProduto != 'kit':
+            raise ValueError("Produto não é um kit válido.")
+
+        # Limpa componentes antigos do banco de dados
+        self.db.execute_query("DELETE FROM componentes_kit WHERE kit_produto_id = ?", (kit_id,))
+
+        novos_componentes_obj = []
+        for comp_info in componentes_info:
+            comp_id = comp_info['produto_id']
+            quantidade = comp_info['quantidade']
+
+            if not (componente_prod := self.produtos.get(comp_id)):
+                raise ValueError(f"Componente com ID {comp_id} não encontrado.")
+            if componente_prod.tipoProduto == 'kit':
+                raise ValueError("Não é possível adicionar um kit como componente de outro kit.")
+
+            # Insere novo componente no banco
+            query = "INSERT INTO componentes_kit (kit_produto_id, componente_produto_id, quantidade) VALUES (?, ?, ?)"
+            self.db.execute_query(query, (kit_id, comp_id, quantidade))
+            novos_componentes_obj.append(ComponenteKit(componente_prod, quantidade))
+
+        # Atualiza o objeto em memória
+        kit.componentes = novos_componentes_obj
+        kit.recalcular_preco_compra()
+        # Atualiza o preço de compra no banco também
+        self.db.execute_query("UPDATE produtos SET preco_compra = ? WHERE id = ?", (kit.preco_compra, kit_id))
+
     #region Reports
     def verificar_alertas_ressuprimento(self):
         """Retorna uma lista de produtos cujo estoque total está no ponto de ressuprimento ou abaixo."""
-        return [p for p in self.produtos.values() if p.get_estoque_total() <= p.ponto_ressuprimento]
+        # Alertas só se aplicam a produtos individuais com estoque físico.
+        return [p for p in self.produtos.values() if p.tipoProduto == 'individual' and p.get_estoque_total() <= p.ponto_ressuprimento]
 
     def calcular_valor_total_estoque(self):
-        """Calcula o valor total do inventário com base no preço de compra dos produtos."""
-        return sum(p.get_estoque_total() * p.preco_compra for p in self.produtos.values())
+        """Calcula o valor total do inventário com base no preço de compra dos produtos individuais."""
+        return sum(p.get_estoque_total() * p.preco_compra for p in self.produtos.values() if p.tipoProduto == 'individual')
 
     def gerar_relatorio_estoque_simplificado(self):
         """Gera um relatório textual com o status do estoque de todos os produtos."""
         report = f"""RELATÓRIO DE ESTOQUE (SIMPLIFICADO)
 Data de Geração: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
-Valor Total do Estoque: R$ {self.calcular_valor_total_estoque():.2f}
+Valor Total do Estoque (Individuais): R$ {self.calcular_valor_total_estoque():.2f}
 {'='*80}\n\n"""
         for produto in sorted(self.produtos.values(), key=lambda p: p.nome):
-            estoque_locais = "\n".join([f"           - {local}: {qtd} unidades" for local, qtd in produto.estoque_por_local.items() if qtd > 0])
-            if not estoque_locais:
-                estoque_locais = "           - Sem estoque registrado"
-
-            report += f"""ID: {produto.id} - {produto.nome} ({produto.categoria})
-  Estoque Total: {produto.get_estoque_total()} unidades
-  Ponto de Ressuprimento: {produto.ponto_ressuprimento}
-  Estoque por Local:
-{estoque_locais}
-{'-'*30}\n"""
+            report += f"ID: {produto.id} - {produto.nome} ({produto.categoria})"
+            if produto.tipoProduto == 'kit':
+                report += " [KIT]\n"
+                report += f"  Estoque Montável: {produto.get_estoque_total()} kits\n"
+                report += f"  Custo Componentes: R$ {produto.preco_compra:,.2f} | Preço Venda: R$ {produto.preco_venda:,.2f}\n"
+                if not produto.componentes:
+                    report += "  - Kit sem componentes definidos.\n"
+                else:
+                    for comp in produto.componentes:
+                        report += f"    -> {comp.quantidade}x {comp.produto.nome}\n"
+            else: # Individual
+                report += "\n"
+                report += f"  Estoque Total: {produto.get_estoque_total()} unidades\n"
+                report += f"  Ponto de Ressuprimento: {produto.ponto_ressuprimento}\n"
+                report += "  Estoque por Local:\n"
+                estoque_locais = "\n".join([f"    - {local}: {qtd} unidades" for local, qtd in produto.estoque_por_local.items() if qtd > 0])
+                if not estoque_locais:
+                    estoque_locais = "    - Sem estoque registrado"
+                report += estoque_locais + "\n"
+            report += f"{'-'*30}\n"
         return report
 
     def gerar_relatorio_valor_total(self):
         """Gera um relatório simples com o valor total do inventário."""
         valor_total = self.calcular_valor_total_estoque()
-        return f"""RELATÓRIO DE VALOR TOTAL DO INVENTÁRIO
+        return f"""RELATÓRIO DE VALOR TOTAL DO INVENTÁRIO (PRODUTOS INDIVIDUAIS)
 Data de Geração: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
 {'='*60}
-O valor total do seu inventário (baseado no preço de compra) é: R$ {valor_total:.2f}
+O valor total do seu inventário (baseado no preço de compra dos produtos individuais) é: R$ {valor_total:.2f}
 """
 
     def gerar_relatorio_baixo_estoque(self):
-        """Gera um relatório listando todos os produtos com baixo estoque."""
+        """Gera um relatório listando todos os produtos individuais com baixo estoque."""
         produtos_baixo_estoque = self.verificar_alertas_ressuprimento()
-        report = f"""RELATÓRIO DE PRODUTOS COM BAIXO ESTOQUE
+        report = f"""RELATÓRIO DE PRODUTOS COM BAIXO ESTOQUE (INDIVIDUAIS)
 Data de Geração: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
 {'='*60}\n
 """
@@ -504,7 +600,7 @@ Data de Geração: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
             for item in v.itens:
                 vendas[item.produto.nome] += item.quantidade
 
-        report = f"""RELATÓRIO DE PRODUTOS MAIS VENDIDOS
+        report = f"""RELATÓRIO DE PRODUTOS E KITS MAIS VENDIDOS
 Data de Geração: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
 {'='*60}\n
 """
@@ -520,6 +616,9 @@ Data de Geração: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
         """Gera um extrato de todas as movimentações de um produto específico."""
         if not (produto := self.produtos.get(produto_id)):
             return "Erro: Produto não encontrado."
+            
+        if produto.tipoProduto == 'kit':
+            return f"Erro: '{produto.nome}' é um kit. Kits não possuem histórico de movimentação direto. Verifique o histórico de seus componentes."
 
         movimentos_produto = [m for m in self.historico if m.produto.id == produto_id]
 
@@ -533,7 +632,7 @@ Data de Geração: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
         for mov in sorted(movimentos_produto, key=lambda m: m.data, reverse=True):
             sinal = '+' if mov.quantidade > 0 else ''
             report += (f"Data: {mov.data.strftime('%d/%m/%Y %H:%M')} | "
-                       f"Tipo: {mov.tipo:<25} | "
+                       f"Tipo: {mov.tipo:<30} | "
                        f"Qtd: {sinal}{mov.quantidade:<4} | "
                        f"Local: {mov.localizacao.nome}\n")
         return report
@@ -558,7 +657,8 @@ Período: {data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}
                 total_itens_vendidos += item.quantidade
                 receita_total += item.subtotal
                 lucro_total += lucro_item
-                report += f"   - Produto: {item.produto.nome:<25} | Qtd: {item.quantidade}\n"
+                tipo_str = " (Kit)" if item.produto.tipoProduto == 'kit' else ""
+                report += f"   - Produto: {item.produto.nome:<25}{tipo_str} | Qtd: {item.quantidade}\n"
             report += f"   Subtotal Venda: R$ {venda.valor_total:.2f}\n{'-'*20}\n"
 
         report += f"\n{'-'*30}\nRESUMO DO PERÍODO\n{'-'*30}\n"
@@ -568,6 +668,58 @@ Período: {data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}
 
         return report
     
+    def gerar_relatorio_kits_mais_vendidos(self) -> str:
+        """Gera um relatório com os kits mais vendidos."""
+        vendas_kits = Counter()
+        for v in self.vendas.values():
+            for item in v.itens:
+                if item.produto.tipoProduto == 'kit':
+                    vendas_kits[item.produto.nome] += item.quantidade
+        
+        report = f"""RELATÓRIO DE KITS MAIS VENDIDOS
+Data de Geração: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
+{'='*60}\n
+"""
+        if not vendas_kits:
+            return report + "Nenhuma venda de kit registrada."
+
+        for i, (nome_kit, qtd) in enumerate(vendas_kits.most_common(), 1):
+            report += f"{i}º. {nome_kit} - {qtd} kits vendidos\n"
+        
+        return report
+
+    def gerar_relatorio_componente_limitante(self) -> str:
+        """Gera um relatório que mostra qual componente está limitando a produção de cada kit."""
+        report = f"""RELATÓRIO DE COMPONENTES LIMITANTES DE KITS
+Data de Geração: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
+{'='*60}\n
+"""
+        kits = [p for p in self.produtos.values() if p.tipoProduto == 'kit']
+        if not kits:
+            return report + "Nenhum kit cadastrado."
+            
+        for kit in kits:
+            report += f"--- Kit: {kit.nome} (Máx: {kit.get_estoque_total()} montagens) ---\n"
+            if not kit.componentes:
+                report += "  - Sem componentes definidos.\n\n"
+                continue
+
+            componente_limitante = None
+            menor_estoque_relativo = float('inf')
+
+            for comp in kit.componentes:
+                estoque_total_comp = comp.produto.get_estoque_total()
+                estoque_relativo = estoque_total_comp // comp.quantidade
+                report += f"  - Componente: {comp.produto.nome} (Necessário: {comp.quantidade}, Estoque: {estoque_total_comp}) -> Permite {estoque_relativo} montagens\n"
+                
+                if estoque_relativo < menor_estoque_relativo:
+                    menor_estoque_relativo = estoque_relativo
+                    componente_limitante = comp.produto.nome
+
+            report += f"  > Fator Limitante: {componente_limitante}\n\n"
+        
+        return report
+
     def iniciar_devolucao(self, venda_id: int, itens_devolucao_info: list[dict], observacoes: str) -> Devolucao:
         """Inicia um novo processo de devolução no banco de dados e em memória."""
         if not (venda_original := self.vendas.get(venda_id)):
@@ -610,13 +762,24 @@ Período: {data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}
 
         # Passo 1: Retorna os itens devolvidos ao estoque
         for item in devolucao.itens:
-            # Usa o método existente de movimentação de estoque para entrada
-            self.movimentar_estoque(
-                produto_id=item.produto.id,
-                localizacao_id=local_retorno_id,
-                quantidade=item.quantidade,
-                tipo_movimento=f"Devolução #{devolucao.id} - Retorno de Produto"
-            )
+            produto_devolvido = item.produto
+            # Se um kit for devolvido, o estoque de seus componentes retorna.
+            if produto_devolvido.tipoProduto == 'kit':
+                for comp in produto_devolvido.componentes:
+                    qtd_retorno = item.quantidade * comp.quantidade
+                    self.movimentar_estoque(
+                        produto_id=comp.produto.id,
+                        localizacao_id=local_retorno_id,
+                        quantidade=qtd_retorno,
+                        tipo_movimento=f"Retorno Componente Kit Dev. #{devolucao.id}"
+                    )
+            else: # Produto individual
+                self.movimentar_estoque(
+                    produto_id=item.produto.id,
+                    localizacao_id=local_retorno_id,
+                    quantidade=item.quantidade,
+                    tipo_movimento=f"Devolução #{devolucao.id} - Retorno de Produto"
+                )
         
         valor_credito = devolucao.valor_total_devolvido
         valor_troca_paga = 0.0

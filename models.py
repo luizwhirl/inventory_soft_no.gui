@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from collections import defaultdict
 from datetime import datetime
 
-#  Classes de Dados (Models) 
+#  Classes de Dados (Models)
 
 # region Data Classes
 
@@ -35,6 +35,12 @@ class Localizacao:
         return f"{self.id} - {self.nome}"
 
 @dataclass
+class ComponenteKit:
+    """Representa um item que compõe um kit."""
+    produto: Produto  # Referência ao objeto Produto do componente
+    quantidade: int   # Quantidade deste componente necessária para montar UM kit
+
+@dataclass
 class Produto:
     """produto no inventário."""
     id: int
@@ -45,17 +51,46 @@ class Produto:
     codigo_barras: str
     preco_compra: float
     preco_venda: float
-    ponto_ressuprimento: int # o ponto de ressuprimento é o estoque mínimo que deve ser mantido
-    # aqui vamos usar um defaultdict para armazenar a quantidade do produto por nome de localização
+    ponto_ressuprimento: int # Para produtos individuais, é o estoque mínimo
+    tipoProduto: str = "individual" # "individual" ou "kit"
+    
+    # Para produtos individuais, armazena a quantidade por nome de localização
     estoque_por_local: defaultdict[str, int] = field(default_factory=lambda: defaultdict(int))
+    # Para kits, armazena a lista de seus componentes
+    componentes: list[ComponenteKit] = field(default_factory=list)
+
+    def recalcular_preco_compra(self):
+        """Recalcula o preço de compra de um kit somando os preços dos componentes."""
+        if self.tipoProduto == 'kit':
+            self.preco_compra = sum(c.produto.preco_compra * c.quantidade for c in self.componentes)
 
     def get_estoque_total(self) -> int:
-        """faz o calculo e retorna a soma do estoque de todas as localizações"""
-        return sum(self.estoque_por_local.values())
+        """
+        Calcula o estoque total.
+        - Para produtos 'individuais', soma o estoque de todas as localizações.
+        - Para produtos 'kit', calcula a quantidade máxima de kits que podem ser montados
+          com base no estoque disponível de seus componentes.
+        """
+        if self.tipoProduto == 'individual':
+            return sum(self.estoque_por_local.values())
+        elif self.tipoProduto == 'kit':
+            if not self.componentes:
+                return 0
+            try:
+                # Calcula quantos kits podem ser feitos com base em cada componente
+                # e retorna o menor valor (o gargalo da produção)
+                return min(c.produto.get_estoque_total() // c.quantidade for c in self.componentes)
+            except ZeroDivisionError:
+                # Acontece se um componente requer 0 unidades, o que não deve ocorrer.
+                return 0
 
     def __str__(self):
         """representação em string para listas e seleções"""
-        return f"{self.id} - {self.nome} (Estoque Total: {self.get_estoque_total()})"
+        estoque_total = self.get_estoque_total()
+        if self.tipoProduto == 'kit':
+            return f"{self.id} - {self.nome} (Kit) (Estoque Montável: {estoque_total})"
+        else:
+            return f"{self.id} - {self.nome} (Estoque Total: {estoque_total})"
 
 
 @dataclass

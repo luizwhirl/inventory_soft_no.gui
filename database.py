@@ -78,7 +78,19 @@ class DatabaseManager:
                 preco_venda REAL NOT NULL,
                 ponto_ressuprimento INTEGER NOT NULL,
                 fornecedor_id INTEGER NOT NULL,
+                tipo_produto TEXT NOT NULL DEFAULT 'individual',
                 FOREIGN KEY (fornecedor_id) REFERENCES fornecedores (id) ON DELETE CASCADE
+            );
+            """,
+            # --- NOVA TABELA PARA COMPONENTES DE KITS ---
+            """
+            CREATE TABLE IF NOT EXISTS componentes_kit (
+                kit_produto_id INTEGER NOT NULL,
+                componente_produto_id INTEGER NOT NULL,
+                quantidade INTEGER NOT NULL,
+                PRIMARY KEY (kit_produto_id, componente_produto_id),
+                FOREIGN KEY (kit_produto_id) REFERENCES produtos (id) ON DELETE CASCADE,
+                FOREIGN KEY (componente_produto_id) REFERENCES produtos (id) ON DELETE CASCADE
             );
             """,
             """
