@@ -174,16 +174,6 @@ Estes objetos fornecem os serviços de base para a aplicação funcionar, como s
 
 ---
 
-## Resumo com uma Analogia
-
-Pense em uma loja:
-
-- Os **Objetos de Dados** (Produto, Venda) são os itens nas prateleiras e os recibos no caixa.
-- O **GerenciadorEstoque** é o gerente da loja. Ele sabe como fazer pedidos (OrdemCompra), registrar vendas e verificar o estoque.
-- O **CliApp** é o vendedor no balcão. Ele conversa com você (o usuário), anota seu pedido e passa para o gerente executar.
-- O **DatabaseManager** é o arquivo de registros ou o computador no escritório, onde tudo é anotado para não ser esquecido.
-
-
 ## Funcionalidades extras
 
  ### Gestão de devoluções e trocas 
