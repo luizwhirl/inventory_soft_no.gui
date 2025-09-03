@@ -94,6 +94,96 @@ O código está organizado em módulos para separar as responsabilidades:
 - `manager.py`: O cérebro da aplicação, é aqui que está o desgraçado do `GerenciadorEstoque`. Possui toda a lógica de negócio e manipulação dos dados, sem interagir diretamente com a interface.
 - `cli.py`: Contém a classe `CliApp`, responsável por toda a construção e gerenciamento da interface de linha de comando (CLI). Constrói os menus, captura os inputs do usuário e chama os métodos do `GerenciadorEstoque`.
 
+## Estrutura do sistema
+
+## Objetos de Dados (Modelos)
+
+Estes representam as "coisas" e os "eventos" do mundo real que o seu sistema gerencia. Eles são definidos principalmente no arquivo `models.py`.
+
+### Produto
+O objeto mais importante. Representa um item do inventário. Ele pode ser:
+- **Produto físico** (`tipoProduto='individual'`)
+- **Conjunto de produtos** (`tipoProduto='kit'`)
+
+### Fornecedor
+Representa a entidade que fornece os produtos. Contém dados como:
+- Nome
+- Empresa
+- Contato
+
+### Localizacao
+Representa um lugar físico onde o estoque é armazenado, como um "Depósito" ou uma "Loja".
+
+### Venda
+Representa uma transação de venda completa, incluindo:
+- Cliente
+- Data
+- Itens vendidos
+
+### ItemVenda
+Representa uma linha específica dentro de uma venda (ex: 2 unidades de "Mouse Gamer").
+
+### OrdemCompra
+Representa um pedido formal de reposição de estoque feito a um Fornecedor.
+
+### ItemOrdemCompra
+Uma linha específica dentro de uma OrdemCompra.
+
+### Devolucao
+Representa todo o processo de um cliente devolver um ou mais produtos.
+
+### ItemDevolucao
+O produto específico sendo devolvido, incluindo o motivo.
+
+### ComponenteKit
+Um objeto auxiliar que define qual Produto e qual quantidade são necessários para montar um kit.
+
+### HistoricoMovimento
+Um registro de cada vez que o estoque de um produto é alterado (entrada, saída, transferência, etc.).
+
+### Transacao
+Objeto que representa o resultado financeiro de uma Devolucao (reembolso, crédito, etc.).
+
+---
+
+## 2. Objetos de Gerenciamento (Lógica)
+
+Estes são os objetos "trabalhadores" que contêm a inteligência e as regras de negócio do sistema.
+
+### GerenciadorEstoque (de `manager.py`)
+Este é o cérebro de toda a aplicação. É um objeto único que orquestra todas as operações. Ele sabe como:
+- Adicionar, remover e atualizar Produtos, Fornecedores, etc.
+- Processar uma Venda (o que implica em diminuir o estoque).
+- Gerar relatórios complexos analisando os objetos de dados.
+- Conversar com o **DatabaseManager** para salvar e carregar informações.
+
+---
+
+## 3. Objetos de Infraestrutura e Interface
+
+Estes objetos fornecem os serviços de base para a aplicação funcionar, como salvar dados e interagir com o usuário.
+
+### DatabaseManager (de `database.py`)
+É o objeto especialista em banco de dados. Sua única função é executar comandos SQL para ler e escrever dados, garantindo que as informações sejam salvas permanentemente. O **GerenciadorEstoque** usa este objeto sempre que precisa persistir alguma alteração.
+
+### CliApp (de `cli.py`)
+É o objeto que representa a interface do usuário. Ele é responsável por:
+- Desenhar os menus na tela.
+- Capturar o que o usuário digita.
+- Chamar os métodos do **GerenciadorEstoque** para que as ações sejam de fato executadas.
+
+---
+
+## Resumo com uma Analogia
+
+Pense em uma loja:
+
+- Os **Objetos de Dados** (Produto, Venda) são os itens nas prateleiras e os recibos no caixa.
+- O **GerenciadorEstoque** é o gerente da loja. Ele sabe como fazer pedidos (OrdemCompra), registrar vendas e verificar o estoque.
+- O **CliApp** é o vendedor no balcão. Ele conversa com você (o usuário), anota seu pedido e passa para o gerente executar.
+- O **DatabaseManager** é o arquivo de registros ou o computador no escritório, onde tudo é anotado para não ser esquecido.
+
+
 ## Funcionalidades extras
 
  ### Gestão de devoluções e trocas 
